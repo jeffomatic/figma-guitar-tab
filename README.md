@@ -14,12 +14,16 @@ The plugin has two modes, each occupying its own tab in the plugin UI:
 The bracketed names are the spec's terms; the bold ones are what the UI shows.
 See [Naming and UI copy](docs/spec.md#naming-and-ui-copy).
 
+Both modes support 4-, 6- and 7-string instruments — bass, guitar and seven-string guitar.
+The string count comes from the number of lines in the source, and any other count is rejected rather than rendered.
+
 ## Documentation
 
 | Document | Contents |
 | --- | --- |
 | [docs/spec.md](docs/spec.md) | Normative product specification. The source of truth for behavior. |
 | [AGENTS.md](AGENTS.md) | Engineering conventions for anyone (human or agent) writing code here. |
+| [TODO.md](TODO.md) | Implementation plan and milestone status. |
 
 ## Getting started
 
@@ -56,6 +60,9 @@ src/core/              Pure TypeScript. Parsing, layout, settings, protocol type
 src/plugin/            The Figma sandbox half. Turns core's layout output into real nodes.
 src/ui/                The React + Tailwind iframe.
 docs/spec.md           Normative spec
+AGENTS.md              Engineering conventions
+TODO.md                Milestones and status
+.editorconfig          Markdown stays semantically line-broken, never column-wrapped
 ```
 
 See [AGENTS.md](AGENTS.md) for why the boundary between `core/` and `plugin/` is drawn where it is, and what must not cross it.

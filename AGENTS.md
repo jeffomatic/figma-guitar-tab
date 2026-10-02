@@ -4,6 +4,9 @@
 When code and spec disagree, the spec wins — or the spec is wrong and should be changed first, in the same change set.
 Do not implement behavior the spec doesn't describe; see its [Non-goals](docs/spec.md#non-goals).
 
+This file holds invariants, workflow and conventions — how to work in this repo — and points at the spec for anything the spec defines.
+If a sentence here would need editing because the spec gained a test case, a setting or a diagnostic code, it is restating the spec and belongs there instead.
+
 ## Stack
 
 - **UI:** React and TailwindCSS, rendered in the plugin's HTML iframe.
@@ -30,8 +33,9 @@ src/ui/       React controls → messages                          ← thin, pre
   It is a library that happens to be used by a plugin.
   It exports:
   - **parsers** — source text → a row/slot or fretboard structure, plus `ParseError[]`
-  - **layout** — that structure, settings, and an injected `measure(text, fontSize)` → a *scene*: a flat list of plain objects like `{ kind: "line", name, x1, y1, x2, y2, strokeWeight }` and `{ kind: "text", name, x, y, characters, fontSize }`, in spec coordinates.
-    Text measurement is injected because tablature slot widths depend on it; core ships an analytic monospace measure, and the sandbox may pass a Figma-backed one.
+  - **layout** — that structure, settings, and an injected `measure(text, fontSize)` → a *scene*: a flat list of plain objects like `{ kind: "line", name, x1, y1, x2, y2, strokeWeight }`, `{ kind: "rect", name, x, y, width, height, fill }` and `{ kind: "text", name, x, y, characters, fontSize }`, in spec coordinates.
+    Measurement is injected because slot widths depend on it: the sandbox passes a Figma-backed measure, tests pass core's analytic monospace one.
+  - **measure** — the `measure(text, fontSize)` signature, and the analytic monospace implementation that tests inject
   - **settings** — defaults, ranges, clamping, serialization
   - **protocol** — the `UiMessage`/`SandboxMessage` types, imported by both halves
 - `src/plugin/` contains the only code that calls the Figma API.
@@ -45,7 +49,11 @@ src/ui/       React controls → messages                          ← thin, pre
   Adding a spec test case means adding a fixture.
 - Layout is asserted on the scene, not on rendered output: counts and kinds of scene items, and exact coordinates computed from the spec's formulas.
 - Layout tests inject the analytic monospace measure, never a Figma-backed one, so slot widths and positions are deterministic.
-- Equivalence cases (TC-2) are asserted as deep equality between two parses, not against a transcribed expectation — that way the assertion survives a change to defaults.
+  Every px figure in the spec's test cases is computed with that measure.
+  Its advance ratio is a stub constant, not a font metric — the sandbox measures with Figma, so no render depends on it.
+  Don't "correct" it against real font metrics; that would invalidate every fixture for no gain.
+- Tests are co-located with the code they cover, as `*.test.ts` beside the module — `src/core/tablature/parse.test.ts`, not a separate `__tests__/` tree.
+- Equivalence cases — two sources the spec says must parse identically — are asserted as deep equality between the two parses, not against a transcribed expectation, so they survive a change to defaults.
 - Diagnostics are asserted by `code`, `line` and `column`, never by message text.
 
 ## Manifest
@@ -65,10 +73,33 @@ src/ui/       React controls → messages                          ← thin, pre
 
 `editorType` is `figma` only: the plugin draws vector nodes, which FigJam and Slides don't support in the same way.
 
+## What the UI does not do
+
+The UI parses, to show diagnostics as the user types.
+It does **not** run layout, measure text, or precompute any geometry — the sandbox is the only place layout happens.
+Diagnostics are measurement-free, so the UI can predict every `render-failed` without knowing anything about font metrics, and there is nothing for the two halves to disagree about.
+If you find yourself wanting layout in the UI, you are about to introduce a divergence; send a message and let the sandbox answer.
+
+It also keeps no dirty flag and no unsaved-state tracking.
+Selecting a generated frame overwrites the editor with that frame's stored diagram, by design; selections that carry no diagram leave the editor untouched.
+Don't add a confirmation dialog for the overwrite — it was considered and rejected as more state than the loss is worth.
+
+## Settings ranges
+
+A setting's range lives in one place: the spec's Render settings tables, mirrored by `src/core/`'s settings module.
+The UI renders number inputs with `min`, `max` and `step` taken from there, and core clamps anything out of range on the way in.
+Both, not either: the input attributes keep the normal path clean, and the clamp covers a UI bug, hand-edited plugin data, and values stored before a range narrowed.
+Constraints spanning more than one value can't be an input attribute at all: the fret window's span depends on the source as much as on `leadingFrets` and `trailingFrets`.
+Those are resolved by clamping inside core, not by a diagnostic — a setting the user can reach should not be able to produce an error.
+
 ## Figma specifics that bite
 
 - `figma.loadFontAsync` MUST resolve before any text node is created or any `characters` assignment.
   Load once per render, not per node.
+- Set `lineHeight` to `fontSize` and `textAutoResize` to `WIDTH_AND_HEIGHT` on every text node.
+  Figma's default auto line height is a font metric, so leaving it alone makes node heights unpredictable and the spec's vertical formulas wrong.
+- Node z-order is creation order within a parent, so the renderer appends scene items in the order the spec lists them: labels, lines, knockouts, text.
+  A knockout rectangle created before its string line would be hidden by it.
 - Plugin data values are strings only.
   Everything structured is JSON.
 - `setRelaunchData` requires a matching `relaunchButtons` entry in `manifest.json`.
@@ -82,8 +113,7 @@ src/ui/       React controls → messages                          ← thin, pre
 ## UI copy
 
 Every user-facing string comes from the spec's [Naming and UI copy](docs/spec.md#naming-and-ui-copy) table.
-Don't invent labels, and don't leak spec or code vocabulary into the interface: no *slot*, *note cell*, *slot advance*, *playable region*, *row group*, *hyphenspace*, and no diagnostic `code`.
-A diagnostic surfaces its `message` only.
+Don't invent labels, and don't leak spec or code vocabulary into the interface — the spec's Glossary is the list of words a user should never see, and a diagnostic surfaces its `message`, never its `code`.
 
 The mode identifier is `"tablature"`, not `"tab"`, in types, plugin data and `clientStorage` keys.
 In the UI that mode is labeled **Tab**.
@@ -102,21 +132,13 @@ A sentence-level edit then shows up as a one-line diff instead of reflowing the 
 
 ## Definition of done
 
-`pnpm check` passes, and the spec reflects any behavior that changed.
-A change that alters rendered geometry also updates the affected formulas or defaults table in the spec.
+`pnpm check` passes, and the spec is left consistent with the code.
+What that means depends on which part of the spec you touched:
 
-## Milestones
+- **Rules, decisions and rationale** stay in the spec, and a change in behavior updates them.
+- **Facts marked *illustrative after Mx*** — formulas, pixel figures, type definitions, data tables — are **deleted** when `Mx` lands, and the module named in the marker becomes authoritative.
+  Don't update a marked table to match new code: delete it and let the tests carry the numbers.
+- Before its milestone lands, a marked block is still live, and a change that affects it updates it as usual.
 
-Build in this order; each one is independently verifiable.
-
-| # | Milestone | Done when |
-| --- | --- | --- |
-| M0 | Scaffold | `pnpm check` passes on an empty-but-wired repo; the plugin sideloads and shows a blank UI |
-| M1 | Tablature parser | TC-1 … TC-6 pass, plus the tablature diagnostics table |
-| M2 | Tablature layout | Scene coordinates match the spec's formulas, including line segmentation around text |
-| M3 | Tablature renderer | A frame appears in Figma matching M2's scene; fonts load; names match the node tree |
-| M4 | UI shell and protocol | Source field, settings controls, live diagnostics, render round trip |
-| M5 | Persistence and re-edit | Plugin data written and read, selection-driven edit mode, relaunch button |
-| M6 | Fretboard parser and layout | TC-F1, TC-F2, window-mode worked examples, fretboard diagnostics |
-| M7 | Fretboard renderer and UI tab | The Fretboard UI tab renders; nut, dots, open and mute markers, fret labels |
-| M8 | Polish | Clamping and validation edge cases, empty and oversized input, warning before discarding overrides |
+Which blocks belong to which milestone is in [TODO.md](TODO.md), whose "Done means" is the full checklist.
+From M1 onward `docs/spec.md` should get shorter in every implementation commit; if it grew, check whether you added a fact that belongs in code instead.
