@@ -7,6 +7,14 @@ Do not implement behavior the spec doesn't describe; see its [Non-goals](docs/sp
 This file holds invariants, workflow and conventions — how to work in this repo — and points at the spec for anything the spec defines.
 If a sentence here would need editing because the spec gained a test case, a setting or a diagnostic code, it is restating the spec and belongs there instead.
 
+## Planning and approval
+
+Exiting plan mode is not approval to implement.
+When a plan is finished, stop and wait for an instruction that names what to build.
+
+Treat an ambiguous signal — a mode change, a "continue", a plan file that now exists — as *the plan is ready*, never as *start building*.
+A milestone in [TODO.md](TODO.md) is a description of work, not a go-ahead for it.
+
 ## Stack
 
 - **UI:** React and TailwindCSS, rendered in the plugin's HTML iframe.
