@@ -1,0 +1,6 @@
+# esbuild's postinstall script resolves its platform-native binary, and pnpm
+# blocks install scripts unless they are allowed here. pnpm 12 reads this from
+# pnpm-workspace.yaml under `allowBuilds`; the older `onlyBuiltDependencies`
+# key, and either key in package.json, are ignored.
+allowBuilds:
+  esbuild: true

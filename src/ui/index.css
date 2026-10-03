@@ -1,0 +1,5 @@
+@import "tailwindcss";
+
+/* Tailwind v4 detects sources automatically, but the iframe entry is bundled
+   from a sibling directory, so name the templates explicitly. */
+@source "./**/*.tsx";

@@ -69,17 +69,22 @@ src/ui/       React controls → messages                          ← thin, pre
 ```json
 {
   "name": "Guitar Tab",
-  "id": "<assigned by Figma on first publish; omit until then>",
+  "id": "1234567890123456789",
   "api": "1.0.0",
   "main": "dist/plugin.js",
   "ui": "dist/ui.html",
   "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
   "networkAccess": { "allowedDomains": ["none"] },
   "relaunchButtons": [{ "command": "edit", "name": "Edit source and settings" }]
 }
 ```
 
 `editorType` is `figma` only: the plugin draws vector nodes, which FigJam and Slides don't support in the same way.
+
+`id` is required, and the committed value is a **placeholder**: publication assigns the durable id and overwrites it.
+Importing from a manifest accepts any well-formed value, verified at M0, so there is nothing to mint locally.
+Don't mint one from the Figma app to look official — it would be replaced too, and a plausible value is harder to notice before publishing than an obviously synthetic one.
 
 ## What the UI does not do
 
@@ -102,6 +107,9 @@ Those are resolved by clamping inside core, not by a diagnostic — a setting th
 
 ## Figma specifics that bite
 
+- `documentAccess` is `dynamic-page`, which Figma requires of new plugins.
+  Its visible cost is that node lookup by id is async: `getNodeByIdAsync`, not `getNodeById`, which M5 needs for an `existing` render target.
+  Nothing else here should be affected, since the plugin only ever touches `figma.currentPage` — **to confirm at M5**, as the docs don't publish a full list of what the mode restricts.
 - `figma.loadFontAsync` MUST resolve before any text node is created or any `characters` assignment.
   Load once per render, not per node.
 - Set `lineHeight` to `fontSize` and `textAutoResize` to `WIDTH_AND_HEIGHT` on every text node.

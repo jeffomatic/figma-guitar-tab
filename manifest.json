@@ -1,0 +1,11 @@
+{
+  "name": "Guitar Tab",
+  "id": "1234567890123456789",
+  "api": "1.0.0",
+  "main": "dist/plugin.js",
+  "ui": "dist/ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": { "allowedDomains": ["none"] },
+  "relaunchButtons": [{ "command": "edit", "name": "Edit source and settings" }]
+}

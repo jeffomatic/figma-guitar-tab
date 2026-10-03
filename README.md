@@ -62,6 +62,12 @@ src/ui/                The React + Tailwind iframe.
 docs/spec.md           Normative spec
 AGENTS.md              Engineering conventions
 TODO.md                Milestones and status
+tsconfig.base.json     Shared compiler options
+tsconfig.plugin.json   One program per area, so `figma` is only in scope where it belongs
+tsconfig.ui.json       Likewise for the DOM and JSX
+.oxlintrc.json         Lint rules, type-aware
+vitest.config.ts       Test discovery: src/**/*.test.ts, co-located with the code
+pnpm-workspace.yaml    Allows esbuild's install script, which pnpm blocks by default
 .editorconfig          Markdown stays semantically line-broken, never column-wrapped
 ```
 
