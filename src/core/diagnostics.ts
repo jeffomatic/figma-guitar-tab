@@ -36,14 +36,23 @@ export interface ParseError {
    * Carries no spec vocabulary: a user never reads "slot" or "playable region".
    */
   message: string;
-  /** 0-based, within the whole source. */
-  line: number;
+  /**
+   * 0-based, within the whole source. Absent when the diagnostic is not about
+   * the source at all -- a settings value is out of range no matter what the
+   * tab says, and anchoring it at line 0 would point the UI at the first line
+   * of a tab that has nothing wrong with it.
+   */
+  line?: number;
   /** 0-based within that raw line, prefix included, when a precise run exists. */
   column?: number;
   length?: number;
 }
 
-/** Source order, so the UI can anchor diagnostics without re-sorting. */
+/**
+ * Source order, so the UI can anchor diagnostics without re-sorting.
+ * Unanchored diagnostics sort first: they are about the whole render, not a
+ * place in it.
+ */
 export function bySourcePosition(a: ParseError, b: ParseError): number {
-  return a.line - b.line || (a.column ?? -1) - (b.column ?? -1);
+  return (a.line ?? -1) - (b.line ?? -1) || (a.column ?? -1) - (b.column ?? -1);
 }

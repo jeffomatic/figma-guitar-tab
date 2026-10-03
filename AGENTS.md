@@ -61,6 +61,8 @@ src/ui/       React controls → messages                          ← thin, pre
 
 - Every `TC-*` case in the spec's test-case sections exists as a named fixture, and the test names reference the code (`TC-2 hyphenspace collapses`).
   Adding a spec test case means adding a fixture.
+  The spec holds each case's **source and purpose**; its figures live in the tests, which is the copy that fails when it is wrong.
+  `src/core/tablature/fixtures.ts` is extracted from the spec's fenced blocks verbatim, so a case's ASCII must stay byte-identical in both.
 - Layout is asserted on the scene, not on rendered output: counts and kinds of scene items, and exact coordinates computed from the spec's formulas.
 - Layout tests inject the analytic monospace measure, never a Figma-backed one, so slot widths and positions are deterministic.
   Every px figure in the spec's test cases is computed with that measure.
@@ -105,8 +107,9 @@ Don't add a confirmation dialog for the overwrite — it was considered and reje
 
 ## Settings ranges
 
-A setting's range lives in one place: the spec's Render settings tables, mirrored by `src/core/`'s settings module.
-The UI renders number inputs with `min`, `max` and `step` taken from there, and core clamps anything out of range on the way in.
+A setting's range lives in one place: `src/core/settings.ts`.
+The UI renders number inputs with `min`, `max` and `step` read from that module, and core clamps anything out of range on the way in.
+A diagnostic about a setting names it the way the UI does — the labels live in the same module — and carries no source anchor, since it is wrong no matter what the source says.
 Both, not either: the input attributes keep the normal path clean, and the clamp covers a UI bug, hand-edited plugin data, and values stored before a range narrowed.
 Constraints spanning more than one value can't be an input attribute at all: the fret window's span depends on the source as much as on `leadingFrets` and `trailingFrets`.
 Those are resolved by clamping inside core, not by a diagnostic — a setting the user can reach should not be able to produce an error.
