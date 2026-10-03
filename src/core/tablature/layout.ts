@@ -7,7 +7,6 @@
 
 import type { Measure } from "../measure";
 import {
-  cellGap,
   clearance,
   defaultTunings,
   inkColor,
@@ -101,7 +100,7 @@ function layoutRow(
   settings: TablatureSettings,
   measure: Measure,
 ): RowScene {
-  const { fontSize, stringGap, slotPitch, strokeWeight } = settings;
+  const { fontSize, stringGap, noteGap, strokeWeight } = settings;
 
   // Substituting the default tuning is a layout concern, not a parsing one: the
   // parse result records only what the source wrote.
@@ -126,22 +125,23 @@ function layoutRow(
   const stringY = (index: number): number => padY + index * stringGap;
   const height = 2 * padY + (strings - 1) * stringGap;
 
-  // Slot positions accumulate: `slotPitch` is a minimum advance, not a fixed
-  // one, so a slot holding a cell wider than the pitch pushes the next slot
-  // out. `x = n * slotPitch` breaks on TC-3 and TC-7.
+  // Slot positions accumulate: a slot advances by its widest cell plus
+  // `noteGap`, so the whitespace between every cell and the next slot is
+  // exactly `noteGap` no matter how wide the cells are. `x = n * noteGap`
+  // breaks on TC-3 and TC-7, where one slot is far wider than another.
   const slots: SlotMetrics[] = [];
-  let x = labelColumn + slotPitch / 2;
+  let x = labelColumn + noteGap / 2;
   for (const slot of group.slots) {
     const cells = slot.cells.map((cell) => ({ cell, width: measure(cell.characters, fontSize) }));
     const width = cells.reduce((widest, entry) => Math.max(widest, entry.width), 0);
     slots.push({ x, width, cells });
-    x += Math.max(slotPitch, width + cellGap);
+    x += width + noteGap;
   }
 
   const last = slots.at(-1);
   // A row with no slots is `empty-row-group`, which blocks the render; this just
   // keeps layout from reading a last slot that isn't there.
-  const width = last ? last.x + last.width + slotPitch / 2 : labelColumn;
+  const width = last ? last.x + last.width + noteGap / 2 : labelColumn;
 
   const items: SceneItem[] = [];
 

@@ -117,8 +117,16 @@ Those are resolved by clamping inside core, not by a diagnostic — a setting th
 ## Figma specifics that bite
 
 - `documentAccess` is `dynamic-page`, which Figma requires of new plugins.
-  Its visible cost is that node lookup by id is async: `getNodeByIdAsync`, not `getNodeById`, which M5 needs for an `existing` render target.
-  Nothing else here should be affected, since the plugin only ever touches `figma.currentPage` — **to confirm at M5**, as the docs don't publish a full list of what the mode restricts.
+  It restricts `getNodeById`, `getFileThumbnailNode`, `ComponentNode.instances`, and `PageNode`'s `appendChild` / `findAll` / `findChild` / `exportAsync` family.
+  Node lookup by id is therefore async — `getNodeByIdAsync`, which M5 needs for an `existing` render target — and a `PageNode` member needs `await page.loadAsync()` first.
+  `figma.viewport` and `selection` are unaffected.
+- **Node creation auto-appends to `figma.currentPage`.** So move a new node into its frame with `FrameNode.appendChild` and never reach for `PageNode.appendChild`, which is one of the restricted members above.
+- **Resolve the font once per render** and use it for measurement *and* drawing.
+  Measuring in Roboto Mono while drawing in the Roboto fallback computes every width from a font that isn't on screen, and nothing fails, because `src/plugin/` has no tests.
+- A `LineNode` has zero height and is drawn along its own x axis: `resize(length, 0)`.
+  A vertical line needs a rotation, which the fretboard's fret boundaries will want at M7.
+- `layoutSizingHorizontal` / `layoutSizingVertical` only mean anything once a node is already a child of an auto-layout frame.
+  Append first, then size, or the parent hugs the child instead of honouring its computed extent.
 - `figma.loadFontAsync` MUST resolve before any text node is created or any `characters` assignment.
   Load once per render, not per node.
 - Set `lineHeight` to `fontSize` and `textAutoResize` to `WIDTH_AND_HEIGHT` on every text node.

@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { analyticMeasure } from "../measure";
-import {
-  cellGap,
-  clearance,
-  inkColor,
-  knockoutFill,
-  stringLabelGap,
-  tablatureDefaults,
-} from "../settings";
+import { clearance, inkColor, knockoutFill, stringLabelGap, tablatureDefaults } from "../settings";
 import { TC1, TC2, TC3, TC4, TC5, TC6, TC7, TC9 } from "./fixtures";
 import { layoutTablature, type RowScene, type SceneItem, type TablatureScene } from "./layout";
 import { parseTablature } from "./parse";
@@ -46,18 +39,18 @@ const named = (r: RowScene, name: string): SceneItem => {
 // Derived from the spec's formulas rather than transcribed, so a change to a
 // default moves these with it. The literals the spec states are asserted
 // alongside, so a wrong formula can't agree with a wrong expectation.
-const { fontSize, slotPitch, stringGap, strokeWeight } = tablatureDefaults;
+const { fontSize, noteGap, stringGap, strokeWeight } = tablatureDefaults;
 const charWidth = analyticMeasure("x", fontSize);
 const labelColumn = charWidth + stringLabelGap;
 const padY = fontSize / 2 + clearance;
-const firstSlotX = labelColumn + slotPitch / 2;
+const firstSlotX = labelColumn + noteGap / 2;
 const knockoutHeight = strokeWeight + 2 * clearance;
 
 describe("tablature layout", () => {
   it("the spec's stated constants come out of the formulas", () => {
     expect(px(labelColumn)).toBe(15.2);
     expect(px(padY)).toBe(8);
-    expect(px(firstSlotX)).toBe(27.2);
+    expect(px(firstSlotX)).toBe(23.2);
     expect(px(knockoutHeight)).toBe(5);
     expect(px(charWidth)).toBe(7.2);
   });
@@ -72,16 +65,16 @@ describe("tablature layout", () => {
       if (item.kind !== "text") throw new Error("expected text");
       return px(item.x);
     });
-    expect(slotX).toEqual([27.2, 51.2, 91.2]);
+    expect(slotX).toEqual([23.2, 53.6, 105.6]);
 
-    // X(1) = X(0) + A(0) where A(0) = max(slotPitch, W(0) + cellGap) = 24,
-    // and X(2) = X(1) + A(1) where A(1) = W(1) + cellGap = 40, not slotPitch.
-    expect(px(slotX[1] ?? 0)).toBe(px(firstSlotX + Math.max(slotPitch, 14.4 + cellGap)));
-    expect(px(slotX[2] ?? 0)).toBe(px((slotX[1] ?? 0) + (36 + cellGap)));
+    // Each advance is its own widest cell plus noteGap -- nothing is a
+    // multiple of anything, and the gap is the same both times.
+    expect(px(slotX[1] ?? 0)).toBe(px(firstSlotX + 14.4 + noteGap));
+    expect(px(slotX[2] ?? 0)).toBe(px((slotX[1] ?? 0) + 36 + noteGap));
 
-    // Row width = X(N-1) + W(N-1) + slotPitch / 2.
-    expect(px(r.width)).toBe(110.4);
-    expect(px(r.width)).toBe(px((slotX[2] ?? 0) + charWidth + slotPitch / 2));
+    // Row width = X(N-1) + W(N-1) + noteGap / 2.
+    expect(px(r.width)).toBe(120.8);
+    expect(px(r.width)).toBe(px((slotX[2] ?? 0) + charWidth + noteGap / 2));
 
     expect(texts).toHaveLength(6);
   });
@@ -93,12 +86,12 @@ describe("tablature layout", () => {
 
     const expected = [
       // name, x, width, y -- strings 0-based, as everywhere else.
-      ["Knockout Slot 0 String 0", 25.2, 18.4, 5.5],
-      ["Knockout Slot 1 String 0", 49.2, 40, 5.5],
-      ["Knockout Slot 2 String 0", 89.2, 11.2, 5.5],
-      ["Knockout Slot 0 String 1", 25.2, 11.2, 21.5],
-      ["Knockout Slot 2 String 1", 89.2, 11.2, 21.5],
-      ["Knockout Slot 0 String 5", 25.2, 11.2, 85.5],
+      ["Knockout Slot 0 String 0", 21.2, 18.4, 5.5],
+      ["Knockout Slot 1 String 0", 51.6, 40, 5.5],
+      ["Knockout Slot 2 String 0", 103.6, 11.2, 5.5],
+      ["Knockout Slot 0 String 1", 21.2, 11.2, 21.5],
+      ["Knockout Slot 2 String 1", 103.6, 11.2, 21.5],
+      ["Knockout Slot 0 String 5", 21.2, 11.2, 85.5],
     ] as const;
 
     for (const [name, x, width, y] of expected) {
@@ -125,12 +118,14 @@ describe("tablature layout", () => {
     if (wide.kind !== "rect" || narrow.kind !== "rect") throw new Error("expected rects");
     expect(px(wide.width)).toBeGreaterThan(px(narrow.width));
 
-    // The `12b14` rectangle ends exactly where the `7` rectangle begins. They
-    // abut, and nothing special happens.
+    // Consecutive knockouts on one string never overlap, and sit exactly
+    // noteGap apart less the clearance each one adds. Overlap is only reachable
+    // if noteGap drops below 2 x clearance, which its range forbids -- and the
+    // renderer would cope anyway, since rectangles are independent.
     const bend = named(r, "Knockout Slot 1 String 0");
     const seven = named(r, "Knockout Slot 2 String 0");
     if (bend.kind !== "rect" || seven.kind !== "rect") throw new Error("expected rects");
-    expect(px(bend.x + bend.width)).toBe(px(seven.x));
+    expect(px(seven.x - (bend.x + bend.width))).toBe(px(noteGap - 2 * clearance));
   });
 
   it("TC-7 string lines are single nodes spanning the row", () => {
@@ -141,7 +136,7 @@ describe("tablature layout", () => {
     for (const [index, line] of lines.entries()) {
       if (line.kind !== "line") throw new Error("expected line");
       expect(line.name).toBe(`String ${String(index)}`);
-      expect([px(line.x1), px(line.x2)]).toEqual([15.2, 110.4]);
+      expect([px(line.x1), px(line.x2)]).toEqual([15.2, 120.8]);
       expect(px(line.y1)).toBe(px(line.y2));
       expect(px(line.y1)).toBe(px(padY + index * stringGap));
       expect(line.strokeWeight).toBe(strokeWeight);
@@ -163,7 +158,7 @@ describe("tablature layout", () => {
     expect(r.items.filter((i) => i.name.startsWith("Label "))).toHaveLength(6);
     expect(r.items.filter((i) => i.name.startsWith("Slot "))).toHaveLength(30);
 
-    expect(px(r.width)).toBe(142.4);
+    expect(px(r.width)).toBe(131.2);
     expect(px(r.height)).toBe(96);
     expect(px(r.height)).toBe(px(2 * padY + 5 * stringGap));
 
@@ -171,7 +166,7 @@ describe("tablature layout", () => {
     const xs = kinds(r, "rect")
       .filter((item) => item.name.endsWith("String 0"))
       .map((item) => (item.kind === "rect" ? px(item.x) : 0));
-    expect(xs).toEqual([25.2, 49.2, 73.2, 97.2, 121.2]);
+    expect(xs).toEqual([21.2, 44.4, 67.6, 90.8, 114]);
   });
 
   it("TC-1 defaults the labels to standard tuning, right-aligned", () => {
@@ -200,10 +195,10 @@ describe("tablature layout", () => {
     const second = named(r, "Slot 1 String 1");
     if (first.kind !== "text" || second.kind !== "text") throw new Error("expected text");
 
-    // `2h3p2` is 36px, wider than the 24px pitch, so the slot advances by
-    // W + cellGap and the next slot starts clear of the text.
-    expect(px(second.x)).toBe(px(first.x + 36 + cellGap));
-    expect(px(second.x)).toBeGreaterThan(px(first.x + 36));
+    // `2h3p2` is 36px wide, so its slot advances by 36 + noteGap and the next
+    // slot starts a full gap clear of the text rather than hard against it.
+    expect(px(second.x)).toBe(px(first.x + 36 + noteGap));
+    expect(px(second.x - (first.x + 36))).toBe(px(noteGap));
 
     // Both strings' cells in slot 0 share one left edge.
     const sameSlot = named(r, "Slot 0 String 0");
@@ -226,9 +221,9 @@ describe("tablature layout", () => {
     const second = named(r, "Slot 1 String 0");
     if (first.kind !== "text" || second.kind !== "text") throw new Error("expected text");
 
-    expect(px(first.x)).toBe(27.2);
-    expect(px(second.x)).toBe(51.2);
-    expect(px(r.width)).toBe(70.4);
+    expect(px(first.x)).toBe(23.2);
+    expect(px(second.x)).toBe(46.4);
+    expect(px(r.width)).toBe(61.6);
 
     // Every cell is one character, so every knockout is 11.2 x 5.
     for (const rect of kinds(r, "rect")) {
@@ -258,6 +253,39 @@ describe("tablature layout", () => {
       .filter((item) => item.name.startsWith("Label "))
       .map((item) => (item.kind === "text" ? item.characters : ""));
     expect(labels).toEqual(["e", "B", "G", "D", "A", "E"]);
+  });
+
+  it("every gap between a cell and the next slot is exactly noteGap", () => {
+    // The regression test for the bug this formula replaced. The advance used
+    // to be max(slotPitch, W + cellGap), so narrow slots were governed by the
+    // pitch and wide ones by a separate floor -- which made the whitespace
+    // *shrink* as cells got wider: 16.8px after one character, 4px after three.
+    for (const [name, source] of Object.entries({ TC1, TC2, TC3, TC5, TC7, TC9 })) {
+      for (const r of scene(source).rows) {
+        const slotCount = r.items.filter((i) => i.name.startsWith("Knockout Slot 0 ")).length
+          ? new Set(
+              r.items.filter((i) => i.name.startsWith("Slot ")).map((i) => i.name.split(" ")[1]),
+            ).size
+          : 0;
+
+        for (let n = 0; n < slotCount - 1; n++) {
+          const cellsIn = (slot: number): SceneItem[] =>
+            r.items.filter((i) => i.name.startsWith(`Slot ${String(slot)} String `));
+
+          const here = cellsIn(n);
+          const next = cellsIn(n + 1);
+          // X(n) -- every cell in a slot shares one left edge.
+          const left = Math.min(...here.map((i) => (i.kind === "text" ? i.x : 0)));
+          // W(n) -- the widest cell in the slot.
+          const widest = Math.max(
+            ...here.map((i) => (i.kind === "text" ? analyticMeasure(i.characters, fontSize) : 0)),
+          );
+          const nextLeft = Math.min(...next.map((i) => (i.kind === "text" ? i.x : 0)));
+
+          expect(px(nextLeft - (left + widest)), `${name} slot ${String(n)}`).toBe(px(noteGap));
+        }
+      }
+    }
   });
 
   it("rowGap never reaches a coordinate", () => {

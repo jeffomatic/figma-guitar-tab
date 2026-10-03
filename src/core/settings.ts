@@ -10,8 +10,15 @@
 import type { ParseError } from "./diagnostics";
 
 export interface TablatureSettings {
-  /** Minimum advance from one slot to the next; wider cells push their slot out. */
-  slotPitch: number;
+  /**
+   * Whitespace between a note cell and the start of the next slot.
+   *
+   * Every gap is exactly this, whatever the cells are: a slot advances by its
+   * widest cell plus this gap. It was once a *minimum advance* instead, which
+   * meant narrow slots were governed by the pitch and wide ones by a separate
+   * floor -- two rules, so two visibly different gaps in the same row.
+   */
+  noteGap: number;
   strokeWeight: number;
   stringGap: number;
   /** Font size of all text, both string labels and note cells. */
@@ -26,7 +33,7 @@ export interface SettingRange {
 }
 
 export const tablatureDefaults: TablatureSettings = {
-  slotPitch: 24,
+  noteGap: 16,
   strokeWeight: 1,
   stringGap: 16,
   fontSize: 12,
@@ -34,7 +41,8 @@ export const tablatureDefaults: TablatureSettings = {
 };
 
 export const tablatureRanges: Record<keyof TablatureSettings, SettingRange> = {
-  slotPitch: { min: 4, max: 200, step: 1 },
+  // The minimum doubles as the old `cellGap`'s job: cells never touch.
+  noteGap: { min: 4, max: 200, step: 1 },
   strokeWeight: { min: 0.25, max: 8, step: 0.25 },
   stringGap: { min: 4, max: 200, step: 1 },
   fontSize: { min: 4, max: 200, step: 1 },
@@ -47,7 +55,7 @@ export const tablatureRanges: Record<keyof TablatureSettings, SettingRange> = {
  * user-facing, so it names the setting from here and never by its identifier.
  */
 export const tablatureLabels: Record<keyof TablatureSettings, string> = {
-  slotPitch: "Note spacing",
+  noteGap: "Note spacing",
   strokeWeight: "String weight",
   stringGap: "String spacing",
   fontSize: "Text size",
@@ -58,8 +66,6 @@ export const tablatureLabels: Record<keyof TablatureSettings, string> = {
 
 /** Padding around a knockout: beside the text, and beyond the line's thickness. */
 export const clearance = 2;
-/** Minimum whitespace between a cell and the start of the next slot. */
-export const cellGap = 4;
 /** Space between the string-label column and the string lines. */
 export const stringLabelGap = 8;
 /** Fill of the rectangles that hide a string line behind text. Assumes a white page. */

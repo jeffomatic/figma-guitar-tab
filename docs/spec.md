@@ -37,7 +37,7 @@ Note in particular that *string* and *fret* are distinct: a number appearing in 
 | **fret number** | A position along a string, counted from the nut. `0` means the open string. This is what the numbers in ASCII source denote. |
 | **note cell** | The text occupying one slot on one string: a run of ASCII characters denoting what is played there — a bare fret number (`4`), one decorated with technique notation (`4/6`, `2h3p2`), or an `x` for a muted note. A cell may encode more than one note. Its rendering is a single text node. |
 | **slot** | One moment in time in a tablature row: the note cells played simultaneously, at most one per string. Slots are ordered left to right and are the unit of horizontal position — which cells share a slot is decided by start column, not by ordinal position. |
-| **slot advance** | The horizontal distance from one slot's left edge to the next slot's left edge. Borrowed from typography, where a glyph's advance is the distance from its origin to the next glyph's. It is not constant: a slot advances by `slotPitch` unless its widest cell needs more room, in which case the slot widens to fit. |
+| **slot advance** | The horizontal distance from one slot's left edge to the next slot's left edge. Borrowed from typography, where a glyph's advance is the distance from its origin to the next glyph's. It is not constant: a slot advances by its widest cell's width plus `noteGap`, so a slot holding a wide cell pushes the next one further out. |
 | **row** | A horizontal band of tablature containing one set of string lines. A tab too long to fit one line of ASCII is split across several rows. |
 | **row frame** | The Figma frame holding one row's line nodes and text nodes. |
 | **row group** | The block of source lines that produces one row: the lines between two blank lines, one line per string. *Row* is the rendered band, *row group* its source. |
@@ -55,7 +55,7 @@ Three registers of naming, which this document keeps separate.
 | Register | Audience | Rule |
 | --- | --- | --- |
 | **Spec term** | this document | Precise, even when clunky. `traditional tablature`, `slot`, `note cell`, `playable region`. |
-| **Identifier** | code, plugin data, messages | The spec term in the codebase's casing: `"tablature"`, `slotPitch`, `cellGap`. Identifiers are contracts, so they change only with a schema version. |
+| **Identifier** | code, plugin data, messages | The spec term in the codebase's casing: `"tablature"`, `noteGap`, `stringLabelGap`. Identifiers are contracts, so they change only with a schema version. |
 | **UI label** | the person using the plugin | What a guitarist would say. Short, no spec vocabulary. |
 
 The governing rule: **no spec internal ever reaches the UI.** A user never sees *slot*, *note cell*, *slot advance*, *playable region*, *row group* or *hyphenspace*, and never sees a diagnostic `code`.
@@ -67,7 +67,7 @@ Note the inversion in the first row below: *tab* is a poor spec term because thi
 | --- | --- | --- | --- |
 | Tablature mode | traditional tablature | `"tablature"` | **Tab** |
 | Fretboard mode | fretboard diagram | `"fretboard"` | **Fretboard** |
-| Minimum slot advance | slot pitch | `slotPitch` | Note spacing |
+| Gap between a cell and the next slot | note gap | `noteGap` | Note spacing |
 | Vertical gap between strings | — | `stringGap` | String spacing |
 | String line stroke weight | — | `strokeWeight` | String weight |
 | Text size | — | `fontSize` | Text size |
@@ -183,21 +183,7 @@ Text measurement, fonts and vertical centering are specified once for both modes
 
 #### Node tree
 
-*Illustrative after M3. Authoritative: the renderer in `src/plugin/`.*
-
-```
-Frame  "Guitar Tab"                 ← parent frame; carries the plugin data
-├─ Frame  "Row 0"
-│  ├─ Text  "Label e"               ← one per string, top to bottom, always present
-│  ├─ …                               (from the source, or the default tuning)
-│  ├─ Line  "String 0"              ← one per string, spanning the whole row
-│  ├─ …
-│  ├─ Rect  "Knockout Slot 2 String 1"  ← one per note cell, under its text
-│  ├─ …
-│  └─ Text  "Slot 2 String 1"       ← one per note cell; characters verbatim
-└─ Frame  "Row 1"
-   └─ …
-```
+The tree is built by the renderer in `src/plugin/render.ts`: a parent frame carrying the plugin data, holding one row frame per row group, each holding that row's string labels, string lines, knockout rectangles and note-cell text.
 
 - The parent frame uses vertical auto-layout with `itemSpacing` = **rowGap**, no padding, and no fill.
   Row frames are absolutely positioned internally (text overlaps the string lines' band), have no fill, and are resized to their computed extent.
@@ -207,7 +193,8 @@ Frame  "Guitar Tab"                 ← parent frame; carries the plugin data
   Numbers that are not indices keep their real values — a fretboard's `Fret Label 7` is fret 7, not the eighth fret drawn.
 - Layer names are for legibility and debugging, not identity: a re-render rebuilds the row frames wholesale rather than diffing them.
   Persistence and re-edit are specified in [Persistence and re-edit](#persistence-and-re-edit).
-- A newly generated parent frame is placed at the **default location** and left selected: the document position of the center of the current viewport when that is available, and the origin otherwise.
+- A newly generated parent frame is **centered on the default location** and left selected: the document position of the center of the current viewport when that is available, and the origin otherwise.
+  Centered, not cornered — a frame whose top-left sat at the center of the view would appear in its lower-right quadrant and usually overflow it.
   It is appended to the current page, never into whatever node happens to be selected, so placement doesn't depend on the selection.
 
 #### Coordinates
@@ -221,7 +208,8 @@ Two quantities are named here because the rest of this document refers to them:
 - **`L`**, the label column's width: the widest label that row renders, plus `stringLabelGap`. String lines start at `L`.
 - **`padY`**, the vertical padding above the first string and below the last: half the tallest ornament on a string line, plus `clearance`.
 
-Each slot's left edge accumulates from the previous slot's, and the row leads in and out by half a slot pitch, reproducing the leading and trailing hyphens of conventional ASCII tab.
+Each slot's left edge accumulates from the previous slot's: a slot advances by its widest cell plus `noteGap`.
+The row leads in and out by half a gap, reproducing the leading and trailing hyphens of conventional ASCII tab.
 
 `padY` exists for two reasons, and is not cosmetic:
 
@@ -236,11 +224,14 @@ The fretboard diagram pads vertically the same way, with the same `clearance`, o
 Row groups whose labels differ in width therefore start their string lines at different `x`, and the rows do not align with each other.
 That is deliberate: the rendering respects what the ASCII says, rather than imposing a column width the source didn't ask for.
 
-Two properties of this model are worth stating, because the obvious simpler formula (`x = n × slotPitch`) breaks on the test cases below:
+Two properties of this model are worth stating, because the obvious simpler formula (`x = n × noteGap`) breaks on the test cases below:
 
-- **Slots widen to fit their contents.** `slotPitch` is a *minimum* advance, not a fixed one.
-  A cell like `2h3p2` is five characters, which at the default text size is half again as wide as the default pitch, so its slot advances by the cell's own width plus `cellGap` instead.
-  Without this, a long cell overlaps its neighbor's text and its knockout rectangle hides part of the next slot (TC-3, TC-7).
+- **Slots widen to fit their contents, and the gap stays constant.** The advance is the widest cell's width *plus* `noteGap`, so the whitespace between a cell and the next slot is exactly `noteGap` however wide the cells are.
+  A cell like `2h3p2` is five characters and pushes its slot out by all of them; without that, a long cell overlaps its neighbor's text and its knockout hides part of the next slot (TC-3, TC-7).
+
+  This replaced an earlier rule, `max(noteGap, cellWidth + minimumGap)`, which treated the setting as a *minimum advance*.
+  That version applied two rules at once — narrow slots were governed by the pitch, wide ones by the separate minimum — so the whitespace *shrank* as cells grew wider, and a wide cell ended up nearly touching the next slot.
+  One rule, one gap: the uniformity is what makes a row read as evenly spaced, and it is asserted directly rather than inferred from the per-case figures.
 - **Cells are left-aligned, not centered.** Every cell in a slot starts at the same left edge, which is what the ASCII source shows: all cells of one chord begin in the same character column.
   Centering would stagger them whenever a slot mixes widths — a `10` and a `5` on different strings would no longer line up (TC-7).
   Text nodes therefore use left horizontal alignment and are positioned by their left edge, never by a center point.
@@ -263,6 +254,7 @@ Three properties follow for free, all asserted in TC-8:
 - **A string not played during a slot runs straight through it**, because a cell that doesn't exist produces no rectangle — even where a long cell on another string has made that slot wide.
 - **A cell narrower than its slot hides only its own width**, since the rectangle is sized from the cell's text rather than from the widest cell in the slot.
 - **Rectangles that abut or overlap need no special handling.** Cutting the line into segments instead required merging intervals that touch at a point, inverting the union and discarding sub-pixel remnants; none of that arises here.
+  With a uniform gap, consecutive knockouts on one string in fact never touch — they sit `noteGap` apart, less the `clearance` each adds — so this is now a robustness property rather than a case the defaults reach.
 
 One limit of the approach, accepted for v1: it assumes a white background.
 On a dark frame or over artwork the rectangles show as white bars; see [Non-goals](#non-goals).
@@ -274,10 +266,11 @@ A rectangle reaches over a neighbouring string only if `strokeWeight + 2 × clea
 
 Settings are per-parent-frame and stored with the ASCII source as plugin data on the parent frame.
 
-Five are user-configurable: `slotPitch`, the *minimum* advance from one slot to the next; `strokeWeight`; `stringGap`; `fontSize`, which governs both string labels and note cells; and `rowGap`.
+Five are user-configurable: `noteGap`, the whitespace between a note cell and the next slot; `strokeWeight`; `stringGap`; `fontSize`, which governs both string labels and note cells; and `rowGap`.
+`noteGap`'s minimum is what keeps two cells from ever touching, so no separate minimum-gap constant is needed.
 Their defaults and ranges are in `src/core/settings.ts`, which is also where the UI reads the `min`, `max` and `step` for its inputs.
 
-Everything else is fixed for v1 and lives in the same module: `clearance` and `cellGap`, the spacing that keeps text clear of lines and of the next slot; `stringLabelGap`; `knockoutFill` and `inkColor`; `fontFamily`, `Roboto Mono` falling back to `Roboto`; and `defaultTunings`.
+Everything else is fixed for v1 and lives in the same module: `clearance`, the spacing that keeps a knockout clear of the text it sits behind; `stringLabelGap`; `knockoutFill` and `inkColor`; `fontFamily`, `Roboto Mono` falling back to `Roboto`; and `defaultTunings`.
 
 ### Tablature test cases
 
@@ -326,8 +319,8 @@ The labels are defaulted, and the knockouts tile each string line without touchi
 ```
 
 **TC-3 — long note cells.** A hammer-on-pull-off on the 2nd string, played simultaneously with a single note on the 1st string, followed by a chord of open strings.
-`2h3p2` is wider than the default slot pitch, so its slot advances by the cell's width plus `cellGap` instead.
-The case exists to pin that the following zeroes start clear of that text, not merely one pitch along.
+`2h3p2` is five characters wide, so its slot advances by all of that plus `noteGap`.
+The case exists to pin that the following zeroes start a full gap clear of that text, not merely one pitch along.
 
 ```
 -3-----0-
@@ -373,7 +366,7 @@ A |-2---
 E |-----
 ```
 
-**TC-7 — mixed cell widths and slot widening.** The case that defeats `x = n × slotPitch`.
+**TC-7 — mixed cell widths and slot widening.** The case that defeats `x = n × noteGap`.
 
 ```
 -10-12b14----7-
@@ -385,7 +378,7 @@ E |-----
 ```
 
 Its first slot mixes a two-character cell with two one-character cells, and all three share one left edge.
-Its second slot is wider than `slotPitch`, so it advances by the cell's width plus `cellGap`, and the third slot starts clear of it.
+Its second slot holds a five-character cell, so it advances by that width plus `noteGap`, and the third slot starts a full gap clear of it — the same gap the first slot gets, which is the point.
 The source supplies no labels, so the label column holds standard tuning — which is why the first slot does not begin at half a pitch from the frame's edge.
 
 **TC-8 — knockouts.** The TC-7 source again, asserting the rectangles rather than the slots.
@@ -409,7 +402,7 @@ No diagnostics: an `x` is as valid a cell as a digit, and is rendered verbatim.
 -x-3-
 ```
 
-Both slots advance by `slotPitch`, and every cell is one character, so every knockout is the same size — an `x` is measured and laid out exactly like a fret number, with no special case anywhere in parsing or layout.
+Every cell is one character, so every slot advances by the same amount and every knockout is the same size — an `x` is measured and laid out exactly like a fret number, with no special case anywhere in parsing or layout.
 
 ## Fretboard diagram
 
@@ -666,7 +659,7 @@ Also assert:
 
 ## Text, fonts and measurement
 
-*The font and text-node rules below are illustrative after M3. Authoritative: the renderer in `src/plugin/`. Measurement itself is authoritative in `src/core/measure.ts`.*
+*Authoritative: `src/core/measure.ts` for the measurement contract, and `src/plugin/` for the real measurer and for font resolution. What follows is why they work this way.*
 
 These rules are shared by both modes.
 
@@ -695,16 +688,17 @@ If `advanceRatio` ever changes, every expected px figure moves with it and the f
 
 ### Fonts and text nodes
 
-These rules apply to every text node in both modes.
+Both modes create text nodes through one helper, `src/plugin/font.ts`, which is what makes the decisions below hold for the fretboard diagram as well as for tablature.
+If that helper is ever bypassed, every vertical formula in this document silently stops being true.
 
-- Text nodes use **fontFamily** at **fontSize** in **inkColor**.
-- The font MUST be loaded with `figma.loadFontAsync` before any text node is created or its characters are set.
-  The default family is `Roboto Mono` Regular, falling back to `Roboto` Regular if the former fails to load — `Roboto` is always available in Figma.
-- `lineHeight` MUST be set explicitly to `fontSize` (100%), and `textAutoResize` to `WIDTH_AND_HEIGHT`.
-  Figma's default auto line height is roughly 1.2 × `fontSize` and varies by family, so a node's height would otherwise be a font metric the spec can't predict.
-  Pinning it makes every text node exactly `fontSize` tall, which is what `padY` and the row-height formula assume, and keeps `measure` a width-only function.
-- "Vertically centered on `y`" therefore means the node's top edge sits at `y − fontSize / 2`.
-  This centers the em box, not the digits' cap height, so glyphs sit marginally high; that is accepted for v1 rather than corrected with a font-dependent nudge.
+- The default family is `Roboto Mono` Regular, falling back to `Roboto` Regular if it fails to load — `Roboto` is always available in Figma.
+  The family is resolved **once per render** and used for both measurement and drawing.
+  Measuring in one family while drawing in another would compute every slot width from a font that is not on screen, and nothing would fail: `src/plugin/` carries no tests.
+- A text node's line height is **pinned** to its font size rather than left automatic.
+  Figma's default auto line height is roughly 1.2 × `fontSize` and varies by family, so a node's height would otherwise be a font metric this document cannot predict.
+  Pinning it makes every text node exactly `fontSize` tall, which is what `padY` and the row-height formulas assume, and keeps `measure` a width-only function.
+- Vertical centering is on the **em box**, not on the digits' cap height, so glyphs sit marginally high.
+  Accepted for v1 rather than corrected with a font-dependent nudge.
 
 ## Persistence and re-edit
 
@@ -799,7 +793,7 @@ Diagnostics are measurement-independent, which is why the UI can predict every `
 type Mode = "tablature" | "fretboard";
 
 interface TablatureSettings {
-  slotPitch: number; strokeWeight: number; stringGap: number;
+  noteGap: number; strokeWeight: number; stringGap: number;
   fontSize: number; rowGap: number;
 }
 

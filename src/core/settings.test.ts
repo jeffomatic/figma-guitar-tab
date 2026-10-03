@@ -45,7 +45,7 @@ describe("tablature settings", () => {
   });
 
   it("raises one diagnostic per offending setting", () => {
-    const { diagnostics } = clampTablatureSettings({ fontSize: -5, rowGap: -1, slotPitch: 1e6 });
+    const { diagnostics } = clampTablatureSettings({ fontSize: -5, rowGap: -1, noteGap: 1e6 });
     expect(diagnostics).toHaveLength(3);
   });
 
@@ -63,10 +63,10 @@ describe("tablature settings", () => {
   });
 
   it("names the setting the way the UI does, never by its identifier", () => {
-    const { diagnostics } = clampTablatureSettings({ slotPitch: 0 });
+    const { diagnostics } = clampTablatureSettings({ noteGap: 0 });
     const message = diagnostics[0]?.message ?? "";
-    expect(message).toContain(tablatureLabels.slotPitch);
-    expect(message).not.toContain("slotPitch");
+    expect(message).toContain(tablatureLabels.noteGap);
+    expect(message).not.toContain("noteGap");
   });
 
   it("falls back silently for a missing or wrongly typed value", () => {
