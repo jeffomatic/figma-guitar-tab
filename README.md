@@ -84,9 +84,7 @@ AGENTS.md              Engineering conventions
 TODO.md                Milestones and status
 .oxfmtrc.json          Formatting options, and the file types deliberately left unformatted
 .vscode/               Checked-in editor settings: format-on-save, and the Oxc extension recommendation
-tsconfig.base.json     Shared compiler options
-tsconfig.plugin.json   One program per area, so `figma` is only in scope where it belongs
-tsconfig.ui.json       Likewise for the DOM and JSX
+tsconfig.base.json     Shared compiler options; each area has its own tsconfig.json beside its code
 .oxlintrc.json         Lint rules, type-aware
 vitest.config.ts       Test discovery: src/**/*.test.ts, co-located with the code
 pnpm-workspace.yaml    Allows esbuild's install script, which pnpm blocks by default

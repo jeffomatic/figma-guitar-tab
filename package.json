@@ -9,7 +9,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev": "node scripts/build.mjs --watch",
-    "typecheck": "tsc -p tsconfig.core.json && tsc -p tsconfig.plugin.json && tsc -p tsconfig.ui.json",
+    "typecheck": "tsc -p src/core && tsc -p src/plugin && tsc -p src/ui",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "lint": "oxlint --type-aware",

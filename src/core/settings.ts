@@ -102,31 +102,44 @@ const settingKeys = Object.keys(tablatureDefaults) as (keyof TablatureSettings)[
  * a sensible render. A missing key, or one whose type is wrong, falls back to
  * that setting's default silently: there is no value to report.
  */
-export function clampTablatureSettings(input: unknown): {
-  settings: TablatureSettings;
-  diagnostics: ParseError[];
-} {
+/**
+ * Take whatever numbers are present and default the rest. Does **not** clamp.
+ *
+ * Separate from clamping because stored plugin data and `clientStorage` go
+ * through here first: an out-of-range value survives, so the clamp downstream
+ * can report it. Silently fixing it on the way in would hide exactly what
+ * `setting-out-of-range` exists to say.
+ */
+export function fillTablatureSettings(input: unknown): TablatureSettings {
   const record: Record<string, unknown> =
     typeof input === "object" && input !== null ? (input as Record<string, unknown>) : {};
 
   const settings = { ...tablatureDefaults };
+  for (const key of settingKeys) {
+    const raw = record[key];
+    if (typeof raw === "number" && Number.isFinite(raw)) settings[key] = raw;
+  }
+  return settings;
+}
+
+export function clampTablatureSettings(input: unknown): {
+  settings: TablatureSettings;
+  diagnostics: ParseError[];
+} {
+  const settings = fillTablatureSettings(input);
   const diagnostics: ParseError[] = [];
 
   for (const key of settingKeys) {
-    const raw = record[key];
-    if (typeof raw !== "number" || !Number.isFinite(raw)) continue;
-
     const { min, max } = tablatureRanges[key];
-    const clamped = Math.min(max, Math.max(min, raw));
-    settings[key] = clamped;
+    const clamped = Math.min(max, Math.max(min, settings[key]));
+    if (clamped === settings[key]) continue;
 
-    if (clamped !== raw) {
-      diagnostics.push({
-        severity: "warning",
-        code: "setting-out-of-range",
-        message: `${tablatureLabels[key]} must be between ${String(min)} and ${String(max)}. Using ${String(clamped)}.`,
-      });
-    }
+    diagnostics.push({
+      severity: "warning",
+      code: "setting-out-of-range",
+      message: `${tablatureLabels[key]} must be between ${String(min)} and ${String(max)}. Using ${String(clamped)}.`,
+    });
+    settings[key] = clamped;
   }
 
   return { settings, diagnostics };

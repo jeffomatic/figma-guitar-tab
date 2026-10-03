@@ -31,6 +31,8 @@ A milestone in [TODO.md](TODO.md) is a description of work, not a go-ahead for i
 - **Package manager:** pnpm.
   Node 20+.
 - TypeScript `strict: true`, plus `noUncheckedIndexedAccess` — the parser indexes into lines and columns constantly.
+  Each area owns a `tsconfig.json` beside its code — `src/core/`, `src/plugin/`, `src/ui/` — extending `tsconfig.base.json`.
+  They sit there rather than at the root because oxlint discovers the nearest `tsconfig.json` per file: with only root-level `tsconfig.<area>.json` files it found none, and every type-aware rule silently ran without type information for the Figma globals.
 
 ## The core boundary
 
@@ -135,7 +137,11 @@ Those are resolved by clamping inside core, not by a diagnostic — a setting th
   A knockout rectangle created before its string line would be hidden by it.
 - Plugin data values are strings only.
   Everything structured is JSON.
-- `setRelaunchData` requires a matching `relaunchButtons` entry in `manifest.json`.
+- `setRelaunchData` is a method on the node, and requires a matching `relaunchButtons` entry in `manifest.json`.
+  That manifest entry supplies the button's **label**; the value passed to `setRelaunchData` is an optional *description* beneath it, so it stays `""`.
+- **A re-render reuses its frame and must not rename or reposition it.**
+  The frame keeps its id, name, position and parent so the diagram holds its place in the document; only a newly created frame gets a name and a default location.
+  Sharing one code path for both is the easy way to break this.
 - `manifest.json` declares `"networkAccess": { "allowedDomains": ["none"] }`.
   The plugin must stay offline: no font CDNs, no telemetry, no remote config.
 - Re-render replaces a frame's children wholesale.

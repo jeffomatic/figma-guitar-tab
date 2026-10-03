@@ -28,7 +28,7 @@ Build in this order; each one is independently verifiable.
 | M2 | Tablature layout | The **geometry** of every tablature test case — slot advances and positions, knockouts, row extents — computed through the injected `measure`, with core's analytic measure in tests. Plus the settings module: defaults, ranges, clamping and `setting-out-of-range` | done |
 | M3 | Tablature renderer | A frame appears in Figma matching M2's scene: node kinds, 0-based layer names, z-order, fonts loaded with `lineHeight` pinned, placed at the default location and left selected. Driven by a hardcoded source in the sandbox, which M4 deletes | done |
 | M4 | UI shell and protocol | The shared protocol module and every message in it, including `close`. Source field, settings controls carrying their ranges as input attributes, live diagnostics that select the offending range when clicked, render button disabled while any diagnostic is an error. Labels come from the spec's naming table. Replaces M3's hardcoded source | done |
-| M5 | Persistence and re-edit | Plugin data written and read; all three `SelectionState` cases, including refusing a newer `schemaVersion` and disabling render while such a frame is selected; the editor clobbered by an editable selection and left alone otherwise; render target following the selection; relaunch button via `setRelaunchData` plus its manifest entry; `clientStorage` defaults written while handling `render`; `figma.notify` for outcomes outside the iframe | not started |
+| M5 | Persistence and re-edit | Plugin data written and read; all three `SelectionState` cases, including refusing a newer `schemaVersion` and disabling render while such a frame is selected; the editor clobbered by an editable selection and left alone otherwise; render target following the selection; relaunch button via `setRelaunchData` plus its manifest entry; `clientStorage` defaults written while handling `render`; `figma.notify` for outcomes outside the iframe | done |
 | M6 | Fretboard parser and layout | Parse results and geometry for every fretboard test case, the fret-window worked examples including the clamps at both ends, and every fretboard diagnostic | not started |
 | M7 | Fretboard renderer and UI tab | Widens `Diagram`, `Defaults` and `Mode` in `src/core/protocol.ts` to both modes, which M4 left tablature-only. The Fretboard tab renders: nut versus ordinary boundary, dots, open discs with their knockout fill, fret labels carrying absolute fret numbers, string labels. Mode switching, and per-mode last-used settings | not started |
 
@@ -52,14 +52,7 @@ Renaming one means updating its marker.
 | `src/core/settings.ts` | Defaults, ranges, clamping, serialization for both modes | M2, extended M6 |
 | `src/core/measure.ts` | The `measure` signature and core's analytic monospace implementation | M2 |
 | `src/core/protocol.ts` | `UiMessage`, `SandboxMessage`, `Diagram`, `SelectionState` | M4 |
+| `src/core/pluginData.ts` | Encoding and decoding a stored diagram; version policy | M5 |
 | `src/core/tablature/layout.ts` | Tablature scene geometry | M2 |
 | `src/core/fretboard/layout.ts` | Fretboard scene geometry, including the window computation | M6 |
 | `src/plugin/pluginData.ts` | Reading and writing plugin data, and schema migration | M5 |
-
-## Open questions, by milestone
-
-Decisions the spec deliberately leaves open, to be settled when the code forces them.
-
-| Milestone | Question |
-| --- | --- |
-| M5 | What `SelectionState` does a frame get when `schemaVersion` and `mode` are readable — so it is recognized — but `source` is missing or `settings` is not valid JSON? The three current cases don't cover it |

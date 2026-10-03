@@ -94,10 +94,24 @@ function createRow(row: RowScene, parent: FrameNode, font: FontName): FrameNode 
   return frame;
 }
 
-/** Build the whole diagram. Returns the parent frame, unpositioned. */
-export function renderTablature(scene: TablatureScene, font: FontName): FrameNode {
-  const parent = figma.createFrame();
-  parent.name = scene.name;
+/**
+ * Build the whole diagram. Returns the parent frame, unpositioned.
+ *
+ * With `into`, re-renders that frame in place: every child is discarded and
+ * rebuilt from the scene, and nothing inspects the old subtree first. Its
+ * **name is deliberately left alone** -- a re-rendered frame keeps its id,
+ * name, position and parent, so the diagram holds its place in the document.
+ */
+export function renderTablature(
+  scene: TablatureScene,
+  font: FontName,
+  into?: FrameNode,
+): FrameNode {
+  const parent = into ?? figma.createFrame();
+  if (!into) parent.name = scene.name;
+
+  for (const child of [...parent.children]) child.remove();
+
   parent.fills = [];
   parent.clipsContent = true;
   parent.layoutMode = "VERTICAL";

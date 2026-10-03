@@ -30,14 +30,30 @@ export function App() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
+    /**
+     * An editable selection REPLACES the editor, discarding unsaved edits: a
+     * frame's plugin data is the source of truth, and the plugin keeps no dirty
+     * flag. Anything else leaves the editor alone, so a stray click on empty
+     * canvas can't wipe a source being typed.
+     */
+    const load = (next: SelectionState): void => {
+      if (next.kind !== "editable") return;
+      setSource(next.diagram.source);
+      setSettings(next.diagram.settings);
+    };
+
     const unsubscribe = subscribe((message) => {
       switch (message.type) {
         case "init":
+          // Last-used values, for a new diagram. A selected frame's own stored
+          // settings win, which `load` applies after.
           setSettings(message.defaults.tablature);
           setSelection(message.selection);
+          load(message.selection);
           return;
         case "selection":
           setSelection(message.selection);
+          load(message.selection);
           return;
         case "render-done":
           setFailure(null);
@@ -86,6 +102,13 @@ export function App() {
 
       <DiagnosticList diagnostics={shown} onSelect={selectInSource} />
 
+      {selection.kind === "unsupported-version" && (
+        <p className="rounded bg-amber-50 px-2 py-1 text-amber-900">
+          This diagram was made by a newer version of the plugin, so it can&rsquo;t be edited here.
+          Deselect it to create a new one.
+        </p>
+      )}
+
       {failure !== null && <p className="rounded bg-red-100 px-2 py-1 text-red-900">{failure}</p>}
 
       <div className="flex flex-col gap-2">
@@ -118,8 +141,12 @@ export function App() {
             post({
               type: "render",
               diagram: { mode: "tablature", settings, source },
-              // Follows the selection from M5; nothing is editable yet.
-              target: { kind: "new" },
+              // A render always acts on what is selected now, so editing a
+              // frame then deselecting it makes a second one. By design.
+              target:
+                selection.kind === "editable"
+                  ? { kind: "existing", frameId: selection.frameId }
+                  : { kind: "new" },
             });
           }}
           className="rounded bg-neutral-900 px-3 py-1.5 font-medium text-white disabled:bg-neutral-300"

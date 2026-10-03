@@ -709,19 +709,15 @@ Both modes render into a parent container frame that stores its own ASCII source
 
 ### Plugin data keys
 
-*Illustrative after M5. Authoritative: `src/plugin/pluginData.ts`.*
+*Authoritative: `src/core/pluginData.ts` for the keys and the decoding, `src/plugin/pluginData.ts` for the I/O.*
 
-Written with `node.setPluginData` on the parent frame — private plugin data, not shared plugin data.
-Figma stores only strings, so non-string values are JSON-encoded.
+Written with `node.setPluginData` on the parent frame — **private** plugin data, not shared plugin data.
+Figma stores only strings, so the schema version is a decimal string, the source is stored verbatim, and the settings are JSON.
 
-| Key | Value |
-| --- | --- |
-| `schemaVersion` | Integer as a decimal string. Currently `"1"`. |
-| `mode` | `"tablature"` or `"fretboard"`. |
-| `source` | The ASCII source, verbatim, including newlines. |
-| `settings` | JSON object of the mode's render settings: `TablatureSettings` or `FretboardSettings`, per `mode`. |
+A frame is recognized as plugin-generated when its schema version and mode are both present and readable, **and it carries a source**.
+The source is what makes the three [selection cases](#in-place-edit-flow) exhaustive: a frame of ours with no source has nothing to edit, so it is reported as if nothing were selected and the user is told the data could not be read.
+`getPluginData` returns an empty string for a key that was never set, and a rendered frame can never store an empty source — `empty-source` is an error, so the render would have been refused — so absent and empty mean the same thing, and both mean corrupt.
 
-A frame is recognized as plugin-generated when `schemaVersion` and `mode` are both present and readable.
 No other node carries plugin data.
 
 ### Schema versioning
@@ -730,6 +726,9 @@ No other node carries plugin data.
 - A `schemaVersion` **higher** than the current version MUST NOT be edited.
   The UI reports that the frame was made by a newer version of the plugin and offers no re-render.
 - Within a version, unknown keys in `settings` are ignored and missing keys fall back to that setting's default, so adding a setting does not require a version bump.
+  Settings that will not parse at all are simply every key missing, so they degrade to defaults rather than making the frame unreadable.
+- A stored value that is *out of range* is loaded as written, not silently corrected, so the clamp reports it.
+  Quietly fixing hand-edited data on the way in would hide the one thing `setting-out-of-range` exists to say.
 
 ### In-place edit flow
 
@@ -740,7 +739,7 @@ No other node carries plugin data.
    | --- | --- | --- |
    | A single frame with readable plugin data this version supports | `editable` | **Edit mode**: activates that frame's mode, populates source and settings from the stored values |
    | A single frame whose `schemaVersion` is newer than this plugin | `unsupported-version` | Reports that the frame was made by a newer version, and offers no re-render |
-   | Anything else — nothing selected, several nodes, or a node without plugin data | `none` | **Create mode**: on launch, source and settings start from the user's last-used values for the active mode (see below); later in a session the editor keeps whatever it holds |
+   | Anything else — nothing selected, several nodes, a node without plugin data, or a frame of ours whose stored source is unreadable | `none` | **Create mode**: on launch, source and settings start from the user's last-used values for the active mode (see below); later in a session the editor keeps whatever it holds. An unreadable frame of ours also raises a `figma.notify`, since the user is looking at something the plugin made and declining to load it |
 
 2. `init.command` is `"edit"` only when `selection` is `editable`, and `"run"` in every other case.
    A relaunch button can only exist on a frame the plugin generated, but that frame may still carry an `unsupported-version` schema, so the two fields are reported independently and the UI trusts `selection`.
@@ -759,8 +758,9 @@ No other node carries plugin data.
    Deselecting the frame is how the user gets back to creating one.
 6. Re-rendering in edit mode **replaces all children** of the existing parent frame, then rewrites its plugin data.
    The frame's own id, name, position, size constraints and parent are preserved, so the diagram keeps its place in the document and inbound references survive.
-7. Generated frames call `setRelaunchData(node, { edit: "Edit source and settings" })`, which gives the frame an Edit button in Figma's design panel.
-   The manifest MUST declare a matching `relaunchButtons` entry.
+7. Generated frames call `node.setRelaunchData({ edit: "" })`, which gives the frame an Edit button in Figma's design panel.
+   The manifest MUST declare a matching `relaunchButtons` entry, and that entry is what supplies the button's label.
+   The value passed here is an optional *description* shown beneath the button, so it is left empty rather than repeating the label as a subtitle.
    On relaunch the plugin reads `figma.command === "edit"`, resolves the selection as in step 1, and reports `command: "edit"` only if that resolution produced an `editable` state.
 
 ### Override policy
