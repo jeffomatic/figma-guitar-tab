@@ -107,8 +107,8 @@ Don't add a confirmation dialog for the overwrite — it was considered and reje
 
 ## Settings ranges
 
-A setting's range lives in one place: `src/core/settings.ts`.
-The UI renders number inputs with `min`, `max` and `step` read from that module, and core clamps anything out of range on the way in.
+A setting's range lives in one place: `src/core/settings.ts`, which also holds each setting's UI label.
+The UI renders number inputs with `min`, `max` and `step` read from that module, and takes their labels from it too rather than spelling them out; core clamps anything out of range on the way in.
 A diagnostic about a setting names it the way the UI does — the labels live in the same module — and carries no source anchor, since it is wrong no matter what the source says.
 Both, not either: the input attributes keep the normal path clean, and the clamp covers a UI bug, hand-edited plugin data, and values stored before a range narrowed.
 Constraints spanning more than one value can't be an input attribute at all: the fret window's span depends on the source as much as on `leadingFrets` and `trailingFrets`.

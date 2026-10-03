@@ -74,6 +74,9 @@ Note the inversion in the first row below: *tab* is a poor spec term because thi
 | Vertical gap between rows | — | `rowGap` | Row spacing |
 | Width of a drawn fret | fret gap | `fretGapWidth` | Fret width |
 | Leading and trailing frets | fret window | `leadingFrets`, `trailingFrets` | Frets before / after |
+| The source field | ASCII tab | `source` | ASCII tab |
+| Drawing the diagram | render | `"render"` | Render |
+| Dismissing the plugin | — | `"close"` | Close |
 
 Within this document, **tablature** always means the notation and **UI tab** always means the control in the plugin's interface.
 Unqualified "tab" is avoided except in the established phrase *ASCII tab*, which names the source format.
@@ -787,16 +790,17 @@ Settings validation works the same way.
 **Layout is the sandbox's job alone.** The UI never runs layout, never measures text and never precomputes geometry, so there is nothing for the two halves to disagree about.
 Diagnostics are measurement-independent, which is why the UI can predict every `render-failed` without knowing a thing about font metrics.
 
-*The type definitions below are illustrative after M4; the rules that follow them are normative.*
+*Authoritative: `src/core/protocol.ts`, which holds the message union, `Diagram`, `Defaults` and `SelectionState`. Those are tablature-only until M7 widens them to both modes. The fretboard types below are illustrative after M6; the rules beneath the block are normative.*
+
+UI to sandbox: `ui-ready`, sent once when the React tree mounts; `render`, carrying a `Diagram` and a target that is either a new frame or an existing frame's id; and `close`.
+
+Sandbox to UI: `init`, the reply to `ui-ready`, carrying how the plugin was launched, the per-user defaults and the current selection; `selection`, pushed on every selection change; and `render-done` or `render-failed`, the latter carrying a user-facing message and the offending diagnostics.
+
+`SelectionState` is one of three cases — nothing editable selected, a recognized generated frame, or a generated frame whose `schemaVersion` is newer than this plugin supports — and what each means for the UI is described in [In-place edit flow](#in-place-edit-flow).
+
+Still ahead, and the reason `Diagram` is a union rather than a loose mode-and-settings pair:
 
 ```ts
-type Mode = "tablature" | "fretboard";
-
-interface TablatureSettings {
-  noteGap: number; strokeWeight: number; stringGap: number;
-  fontSize: number; rowGap: number;
-}
-
 interface FretboardSettings {
   fretGapWidth: number; stringGap: number; strokeWeight: number;
   fontSize: number; leadingFrets: number; trailingFrets: number;
@@ -806,45 +810,6 @@ interface FretboardSettings {
 type ModeSettings =
   | { mode: "tablature"; settings: TablatureSettings }
   | { mode: "fretboard"; settings: FretboardSettings };
-
-/** Everything needed to render: a mode, its settings, and the source. */
-type Diagram = ModeSettings & { source: string };
-
-/** Per-user last-used settings for new diagrams, one entry per mode. */
-interface Defaults {
-  tablature: TablatureSettings;
-  fretboard: FretboardSettings;
-}
-
-/** UI → sandbox, via parent.postMessage({ pluginMessage: … }, "*") */
-type UiMessage =
-  /** Sent once when the React tree mounts; prompts an init reply. */
-  | { type: "ui-ready" }
-  /** Render into a new frame, or re-render the frame identified by frameId. */
-  | { type: "render"; diagram: Diagram;
-      target: { kind: "new" } | { kind: "existing"; frameId: string } }
-  | { type: "close" };
-
-/** sandbox → UI, via figma.ui.postMessage(…) */
-type SandboxMessage =
-  /** Reply to ui-ready: how the plugin was launched and the per-user defaults.
-   *  command is "edit" only when selection.kind === "editable". */
-  | { type: "init"; command: "run" | "edit";
-      defaults: Defaults; selection: SelectionState }
-  /** Pushed on every selectionchange, and once as part of init. */
-  | { type: "selection"; selection: SelectionState }
-  | { type: "render-done"; frameId: string }
-  /** Rendering was refused or failed; message is user-facing. */
-  | { type: "render-failed"; message: string; errors: ParseError[] };
-
-/** What the current selection means for the UI's mode. */
-type SelectionState =
-  /** Create mode: nothing editable is selected. */
-  | { kind: "none" }
-  /** Edit mode: a recognized generated frame is selected. */
-  | { kind: "editable"; frameId: string; diagram: Diagram }
-  /** A generated frame whose schemaVersion is newer than this plugin supports. */
-  | { kind: "unsupported-version"; frameId: string; schemaVersion: number };
 ```
 
 Rules:
@@ -854,9 +819,11 @@ Rules:
   Node ids are not stable across renders, since every child is rebuilt.
 - The UI MUST NOT block its own input on a round trip.
   Validation shown while typing comes from the local parser, not from a sandbox reply.
-- `TablatureSettings` and `FretboardSettings` mirror the two Render settings tables exactly; adding a setting means editing both the table and the interface.
+- `TablatureSettings` lives in `src/core/settings.ts`, and `FretboardSettings` will join it; adding a setting means editing that module and, until M6, the fretboard table above.
   The two modes share no settings type, which is why every message carries a `Diagram` rather than a loose `mode` and `settings` pair — a `"fretboard"` mode can't be paired with tablature settings.
   `ParseError` is defined in `src/core/diagnostics.ts`; see [Error handling and validation](#error-handling-and-validation) for what the diagnostics mean.
+- A receiver narrows on a message's `type` before trusting its payload, since `postMessage` delivers `unknown`.
+  Settings arriving over the wire are clamped regardless, so a hand-crafted message cannot put an out-of-range value into a render.
 
 ## Error handling and validation
 
