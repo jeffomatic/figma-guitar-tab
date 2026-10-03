@@ -46,6 +46,7 @@ src/ui/       React controls → messages                          ← thin, pre
   - **measure** — the `measure(text, fontSize)` signature, and the analytic monospace implementation that tests inject
   - **settings** — defaults, ranges, clamping, serialization
   - **protocol** — the `UiMessage`/`SandboxMessage` types, imported by both halves
+  - **diagnostics** — `Severity`, `ParseError` and the union of diagnostic codes, which every parser returns and both halves consume
 - `src/plugin/` contains the only code that calls the Figma API.
   Its renderer walks a scene and creates nodes; it makes no layout decisions and does no arithmetic beyond translating coordinates onto a frame.
 - Consequence: every geometry question is answerable in a unit test, with no Figma runtime and no screenshots.

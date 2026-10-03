@@ -24,7 +24,7 @@ Build in this order; each one is independently verifiable.
 | # | Milestone | Done when | Status |
 | --- | --- | --- | --- |
 | M0 | Scaffold | Scripts, `tsconfig` with `strict` and `noUncheckedIndexedAccess`, oxlint, Vitest, the esbuild build that inlines Tailwind into one `dist/ui.html`, and `manifest.json`. `pnpm check` passes; the plugin sideloads and opens an empty UI | done |
-| M1 | Tablature parser | The **parse result** of every tablature test case — row groups, slots, cells, labels — and every tablature diagnostic, asserted by `code`, `line` and `column`. No geometry. Adds `tsconfig.core.json` — M0 could not, as `tsc` rejects an `include` matching no files — and removes `--passWithNoTests` from the `test` script | not started |
+| M1 | Tablature parser | The **parse result** of every tablature test case — row groups, slots, cells, labels — and every tablature diagnostic, asserted by `code`, `line` and `column`. No geometry. Adds `tsconfig.core.json` — M0 could not, as `tsc` rejects an `include` matching no files — and removes `--passWithNoTests` from the `test` script | done |
 | M2 | Tablature layout | The **geometry** of every tablature test case — slot advances and positions, knockouts, row extents — computed through the injected `measure`, with core's analytic measure in tests. Plus the settings module: defaults, ranges, clamping and `setting-out-of-range` | not started |
 | M3 | Tablature renderer | A frame appears in Figma matching M2's scene: node kinds, 0-based layer names, z-order, fonts loaded with `lineHeight` pinned, placed at the default location and left selected. Driven by a hardcoded source in the sandbox, which M4 deletes | not started |
 | M4 | UI shell and protocol | The shared protocol module and every message in it, including `close`. Source field, settings controls carrying their ranges as input attributes, live diagnostics that select the offending range when clicked, render button disabled while any diagnostic is an error. Labels come from the spec's naming table. Replaces M3's hardcoded source | not started |
@@ -47,6 +47,8 @@ Renaming one means updating its marker.
 
 | Path | Holds | From |
 | --- | --- | --- |
+| `src/core/diagnostics.ts` | `Severity`, `ParseError`, and the union of diagnostic codes | M1, extended M6 |
+| `src/core/tablature/parse.ts` | Tablature parse result: row groups, slots, cells, labels | M1 |
 | `src/core/settings.ts` | Defaults, ranges, clamping, serialization for both modes | M2, extended M6 |
 | `src/core/measure.ts` | The `measure` signature and core's analytic monospace implementation | M2 |
 | `src/core/protocol.ts` | `UiMessage`, `SandboxMessage`, `Diagram`, `SelectionState` | M4 |

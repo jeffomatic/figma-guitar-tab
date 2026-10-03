@@ -9,9 +9,9 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "dev": "node scripts/build.mjs --watch",
-    "typecheck": "tsc -p tsconfig.plugin.json && tsc -p tsconfig.ui.json",
+    "typecheck": "tsc -p tsconfig.core.json && tsc -p tsconfig.plugin.json && tsc -p tsconfig.ui.json",
     "lint": "oxlint --type-aware",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "check": "pnpm typecheck && pnpm lint && pnpm test"
   },
   "dependencies": {

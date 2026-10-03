@@ -36,7 +36,7 @@ Note in particular that *string* and *fret* are distinct: a number appearing in 
 | **string** | One of the guitar's strings. Identified by its **string index**: line 1 of a group of ASCII lines is the highest-pitched string, and the last line is the lowest-pitched. Rendered as a horizontal line node in both modes. |
 | **fret number** | A position along a string, counted from the nut. `0` means the open string. This is what the numbers in ASCII source denote. |
 | **note cell** | The text occupying one slot on one string: a run of ASCII characters denoting what is played there — a bare fret number (`4`), one decorated with technique notation (`4/6`, `2h3p2`), or an `x` for a muted note. A cell may encode more than one note. Its rendering is a single text node. |
-| **slot** | One moment in time in a tablature row: the note cells played simultaneously, at most one per string. Slots are ordered left to right and are the unit of horizontal position — which cells share a slot is decided by column overlap, not by ordinal position. |
+| **slot** | One moment in time in a tablature row: the note cells played simultaneously, at most one per string. Slots are ordered left to right and are the unit of horizontal position — which cells share a slot is decided by start column, not by ordinal position. |
 | **slot advance** | The horizontal distance from one slot's left edge to the next slot's left edge, written `A(n)`. Borrowed from typography, where a glyph's advance is the distance from its origin to the next glyph's. It is not constant: a slot advances by `slotPitch` unless its widest cell needs more room, in which case the slot widens to fit. |
 | **row** | A horizontal band of tablature containing one set of string lines. A tab too long to fit one line of ASCII is split across several rows. |
 | **row frame** | The Figma frame holding one row's line nodes and text nodes. |
@@ -116,16 +116,32 @@ Each cell MUST contain at least one digit or at least one `x`/`X`; a cell that c
 A digit makes it a fret, and an `x` makes it a muted or dead note — the standard ASCII notation for a string struck without being fretted, which real-world tab uses freely (`-x-x-x-`, a muted strum on every string).
 All other characters in a cell are technique notation and are preserved verbatim in the rendered text, as are the `x` characters themselves.
 
-**Step 4 — assign slots.** Each cell has a column span `[start, start + length)` within its playable region.
-Two cells in the same row group belong to the same *slot* if their spans overlap, and slot membership is the transitive closure of that relation.
-Slots are ordered by their lowest start column.
+**Step 4 — assign slots.** Each cell has a start column, and a column span `[start, start + length)`, within its playable region.
+Cells in the same row group belong to the same *slot* when they share a **start column**, and slots are ordered by that column.
 A slot represents one moment in time: every cell in it is played simultaneously.
+
+Cells that are meant to sound together are therefore written flush, and a cell may not straddle the boundary between two slots: a cell whose span overlaps a cell in a *different* slot is an `overlapping-cells` error.
+Cells sharing a start column may overlap freely, since they are one slot already — `10` and `5` beginning at the same column is TC-7's first slot.
+
+The prohibition is what the alignment rule costs, and it is worth seeing the input it rejects:
+
+```
+column:  0123456
+string1: -10-11-     `10` spans [1,3), `11` spans [4,6)
+string2: --2345-     `2345` spans [2,6)
+```
+
+`2345` begins inside `10`'s span and ends inside `11`'s, so it is simultaneous with both and with neither.
+There is no reading of that source a renderer could honor, and the fix is the one the writer meant: pad the lines so the cells line up.
+
+Deciding slots by start column rather than by overlap is what makes the rule total.
+Overlap would have to be transitive to define slots at all, and its transitive closure chains the example above into a single slot holding *two* cells of string 1 — contradicting step 5, and describing a moment in time in which one string is struck twice.
 
 Consequences worth stating explicitly, since they are the cases that break naive implementations:
 
-- Slot identity is decided by **column overlap, not by ordinal position** within a string.
+- Slot identity is decided by **start column, not by ordinal position** within a string.
   A string that is silent for one chord does not shift its later cells into the wrong slot (TC-5).
-- A multi-character cell occupies its full column span, so cells that begin after it on other strings land in a **later** slot (TC-3).
+- A multi-character cell occupies its full column span, so a cell on another string either shares its start column or begins after that span ends — in which case it lands in a **later** slot (TC-3).
 - Absolute column values never reach the renderer — only slot ordering — so hyphen runs of any length produce identical geometry (TC-2).
 
 **Step 5 — emit structure.** The parse result is an ordered list of row groups; each row group holds the string labels the source supplied, if any, and its ordered list of slots; each slot holds at most one cell per string index.
@@ -914,31 +930,18 @@ Rules:
   Validation shown while typing comes from the local parser, not from a sandbox reply.
 - `TablatureSettings` and `FretboardSettings` mirror the two Render settings tables exactly; adding a setting means editing both the table and the interface.
   The two modes share no settings type, which is why every message carries a `Diagram` rather than a loose `mode` and `settings` pair — a `"fretboard"` mode can't be paired with tablature settings.
-  `ParseError` is defined in [Error handling and validation](#error-handling-and-validation).
+  `ParseError` is defined in `src/core/diagnostics.ts`; see [Error handling and validation](#error-handling-and-validation) for what the diagnostics mean.
 
 ## Error handling and validation
 
 Validation runs in the pure parser, so the UI and the sandbox reach identical verdicts.
 A **warning** renders anyway; an **error** blocks rendering.
 
-*The `ParseError` shape below is illustrative after M1, and each mode's diagnostic table after M1 and M6 respectively; severities and the reasoning for them are normative.*
+*The fretboard diagnostic table below is illustrative after M6. Authoritative for the diagnostic type itself: `src/core/diagnostics.ts`; for each mode's codes, that mode's parser and its tests. Severities, and the reasoning for them, are normative.*
 
-```ts
-type Severity = "error" | "warning";
-
-interface ParseError {
-  severity: Severity;
-  /** Stable kebab-case identifier from the tables below, for tests and i18n. */
-  code: string;
-  /** One sentence, user-facing, naming the offending text where useful. */
-  message: string;
-  /** 0-based line number within the whole source, matching layer-name indices. */
-  line: number;
-  /** 0-based column within the line, plus the run's length, when localizable. */
-  column?: number;
-  length?: number;
-}
-```
+A diagnostic carries a severity, a stable kebab-case `code` for tests and i18n, a one-sentence user-facing `message`, and an anchor: a line, and optionally a column and length.
+The anchor is what lets the UI select the offending text when a diagnostic is clicked, so a code that *can* name a precise run should.
+Lines and columns are 0-based — the line within the whole source, the column within that raw line, prefix included.
 
 ### Settings validation
 
@@ -968,15 +971,19 @@ A value that cannot be clamped — a missing key, or one whose type is wrong —
 
 ### Traditional tablature
 
-| Code | Condition | Severity | Behavior |
-| --- | --- | --- | --- |
-| `missing-leading-hyphen` | A line's playable region does not begin with `-`, or a label is not followed by a separator | error | Anchored at the line; the message shows the expected form |
-| `inconsistent-string-count` | Row groups in one source have differing line counts | error | Almost always a paste error, and the rows could not align |
-| `cell-without-value` | A note cell contains neither a digit nor an `x` — for example `h` or `~` alone | error | Anchored at the cell |
-| `too-many-slots` | A row group resolves to more than 400 slots | error | Guards against pathological render times |
-| `too-many-rows` | More than 64 row groups | error | Same |
-| `empty-row-group` | A row group contains no note cells at all | error | There is nothing to render, and the row width formula has no last slot to measure from |
-| — | A pipe inside the playable region | silent | Ignored; see [Non-goals](#non-goals) |
+Every tablature diagnostic is an error.
+The source either describes a tab that can be drawn or it doesn't, and none of these conditions has a sensible thing to fall back to — which is the distinction that keeps this list free of warnings.
+`src/core/tablature/parse.ts` and its tests are authoritative for the codes and their anchors; what follows is why each condition is rejected rather than accommodated.
+
+- A line whose playable region doesn't begin with `-`, or whose label isn't followed by a separator, has no decidable label boundary — see [step 2](#parsing).
+- Row groups with differing line counts are almost always a paste error, and the rows could not be aligned if they were drawn.
+- A note cell holding neither a digit nor an `x` — `h` or `~` alone — names nothing to play.
+- A cell straddling two slots describes a simultaneity no renderer could honor; [step 4](#parsing) works the case through.
+- Caps on slots per row group and on row groups per source guard against pathological render times.
+- A row group with no note cells has nothing to render, and the row width formula has no last slot to measure from.
+
+A pipe inside the playable region is ignored rather than drawn as a bar line, and silently: it is a convention of writing tab, not a mistake.
+See [Non-goals](#non-goals).
 
 ### Fretboard diagram
 
