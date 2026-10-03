@@ -20,6 +20,11 @@ A milestone in [TODO.md](TODO.md) is a description of work, not a go-ahead for i
 - **UI:** React and TailwindCSS, rendered in the plugin's HTML iframe.
 - **Build:** esbuild for TypeScript/JSX transpilation and bundling, driven by `scripts/build.mjs`.
   A small custom esbuild plugin compiles `src/ui/index.css` with Tailwind and inlines the result, along with the bundled UI script, into a single `dist/ui.html` — Figma requires the UI to be one self-contained HTML file.
+- **Format:** oxfmt, configured by `.oxfmtrc.json`, pinned to an exact version — a floating range on a pre-1.0 formatter reformats files nobody touched and buries the real diff.
+  It formats **TypeScript and JavaScript only.**
+  Markdown is excluded because prose uses semantic line breaks (see Docs style) and because `src/core/tablature/fixtures.ts` is extracted byte-for-byte from `docs/spec.md`'s ASCII blocks, so reflowing one would silently change a slot structure.
+  JSON, CSS and HTML are excluded because oxfmt sorts `package.json` fields, `src/ui/index.css` carries Tailwind v4 directives, and `src/ui/index.html` carries the markers the build replaces by exact string match.
+  Write code the formatter agrees with rather than fighting it: if it strips parentheses you wanted for clarity, restructure the expression instead of reinstating them.
 - **Lint:** oxlint with the recommended type-aware rulesets.
 - **Tests:** Vitest.
   `src/core/` is tested; `src/plugin/` and `src/ui/` are not, by design (see below).
@@ -150,7 +155,12 @@ A sentence-level edit then shows up as a one-line diff instead of reflowing the 
 ## Definition of done
 
 `pnpm check` passes, and the spec is left consistent with the code.
-What that means depends on which part of the spec you touched:
+
+Run `pnpm format` once you've stopped editing code, before `pnpm check`.
+`check` gates formatting but does not fix it, and hand-editing code to match the formatter is a wasted round trip that tends to land close but not exact.
+Expect the formatter to rewrite what you just wrote; read a file back after formatting it rather than assuming your version survived.
+
+What consistency with the spec means depends on which part of it you touched:
 
 - **Rules, decisions and rationale** stay in the spec, and a change in behavior updates them.
 - **Facts marked *illustrative after Mx*** — formulas, pixel figures, type definitions, data tables — are **deleted** when `Mx` lands, and the module named in the marker becomes authoritative.

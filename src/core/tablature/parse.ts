@@ -116,6 +116,11 @@ function hasValue(characters: string): boolean {
   return /[0-9xX]/.test(characters);
 }
 
+/** Step 2's label part, present or absent. A row group needs all or none. */
+function isLabeled(label: string): boolean {
+  return label.length > 0;
+}
+
 /** Step 1: split on blank-line runs, discarding leading and trailing blanks. */
 function splitRowGroups(lines: string[]): SourceLine[][] {
   const groups: SourceLine[][] = [];
@@ -278,7 +283,7 @@ function parseRowGroup(group: SourceLine[], push: Push): RowGroup {
     }
   });
 
-  const labeled = labels.filter((label) => label.length > 0).length;
+  const labeled = labels.filter(isLabeled).length;
   let resolvedLabels: string[] | null = null;
   if (malformed) {
     // A line that didn't parse supplies no label, which would read as partial
@@ -287,8 +292,8 @@ function parseRowGroup(group: SourceLine[], push: Push): RowGroup {
   } else if (labeled === labels.length) {
     resolvedLabels = labels;
   } else if (labeled > 0) {
-    const firstIsLabeled = (labels[0] ?? "").length > 0;
-    const odd = labels.findIndex((label) => (label.length > 0) !== firstIsLabeled);
+    const firstIsLabeled = isLabeled(labels[0] ?? "");
+    const odd = labels.findIndex((label) => isLabeled(label) !== firstIsLabeled);
     push(
       "partial-labels",
       "Either every line names its string, or none do.",

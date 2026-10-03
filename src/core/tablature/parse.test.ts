@@ -123,7 +123,9 @@ describe("tablature diagnostics", () => {
   });
 
   it("tab-character is anchored at the tab", () => {
-    const parse = parseTablature(sixLines("------", "--\t---", "------", "------", "------", "------"));
+    const parse = parseTablature(
+      sixLines("------", "--\t---", "------", "------", "------", "------"),
+    );
     expect(codes(parse)).toEqual(["tab-character"]);
     expect(at(parse.diagnostics, 0)).toMatchObject({ line: 1, column: 2, length: 1 });
   });

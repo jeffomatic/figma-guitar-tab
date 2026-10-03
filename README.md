@@ -27,7 +27,7 @@ The string count comes from the number of lines in the source, and any other cou
 
 ## Getting started
 
-Requires Node 20+, [pnpm](https://pnpm.io), and the Figma **desktop** app — development plugins cannot be loaded in the browser.
+Requires Node 20.19+, [pnpm](https://pnpm.io), and the Figma **desktop** app — development plugins cannot be loaded in the browser.
 
 ```sh
 pnpm install
@@ -40,12 +40,32 @@ The plugin then appears under Plugins → Development → Guitar Tab.
 `pnpm dev` rebuilds on change.
 Figma does not hot-reload, so re-run the plugin from the menu (or ⌥⌘P to re-run the last plugin) after a rebuild.
 
+## Editor setup
+
+Formatting is handled by [oxfmt](https://oxc.rs/docs/guide/usage/formatter), which runs from this repo's own `node_modules`.
+There is nothing to install globally.
+
+**VS Code, Cursor, and other VS Code–based editors:** install the [Oxc extension](https://marketplace.visualstudio.com/items?itemName=oxc.oxc-vscode) (`oxc.oxc-vscode`).
+The editor offers it the first time you open this folder, because it's listed in `.vscode/extensions.json`; otherwise search for "Oxc" in the Extensions panel.
+`.vscode/settings.json` is checked in and already enables format-on-save for TypeScript and JavaScript, so once the extension is installed, saving a file formats it.
+The extension runs `oxfmt --lsp` out of this project, so run `pnpm install` first or it has no formatter to talk to.
+The same extension also surfaces oxlint's diagnostics inline.
+
+**Any other editor:** run `pnpm format` before committing.
+`pnpm check` fails on an unformatted file, so nothing unformatted gets far.
+
+Only TypeScript and JavaScript are formatted.
+Markdown, JSON, CSS and HTML are excluded in `.oxfmtrc.json` — prose here uses semantic line breaks, `docs/spec.md`'s ASCII examples are extracted verbatim into test fixtures, and the UI's HTML and CSS carry build markers and Tailwind directives.
+Don't widen that list without reading the note in [AGENTS.md](AGENTS.md).
+
 ## Commands
 
 | Command | Does |
 | --- | --- |
 | `pnpm build` | One-shot production build into `dist/` |
 | `pnpm dev` | Same build, in watch mode |
+| `pnpm format` | oxfmt, writing in place |
+| `pnpm format:check` | oxfmt, reporting instead of writing |
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm lint` | oxlint, type-aware rules |
 | `pnpm test` | Vitest, run once |
@@ -62,6 +82,8 @@ src/ui/                The React + Tailwind iframe.
 docs/spec.md           Normative spec
 AGENTS.md              Engineering conventions
 TODO.md                Milestones and status
+.oxfmtrc.json          Formatting options, and the file types deliberately left unformatted
+.vscode/               Checked-in editor settings: format-on-save, and the Oxc extension recommendation
 tsconfig.base.json     Shared compiler options
 tsconfig.plugin.json   One program per area, so `figma` is only in scope where it belongs
 tsconfig.ui.json       Likewise for the DOM and JSX
