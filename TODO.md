@@ -37,6 +37,11 @@ Two notes on the shape of this list:
 - **M1 and M2 split one spec section.** The tablature test cases assert both a parse result and a geometry, so each case is exercised twice — by M1 for what it parses to, by M2 for where it lands. Neither milestone passes a case alone, which is why the spec marks that section for both.
 - **M6 does not split the same way.** The fretboard has no slot model, so its parse and layout are small enough to land together.
 
+**Measure breaks landed out of band, after M5.** Pipes in ASCII tab are now parsed as measure breaks and rendered as vertical lines, which was previously listed under the spec's *Not in v1*. It is not a milestone — it cuts across M1, M2 and M3's work — but two things it left behind matter to what follows:
+
+- The renderer draws **axis-aligned lines in either orientation**, so M7's fret boundaries and nut need no new mechanism.
+- A tablature slot is now **notes or a break**, so M6 and M7 should not assume a slot holds cells.
+
 There is no "polish" milestone.
 Settings clamping belongs to M2, where settings first arrive, and selection-change behavior to M5, where selection is first read; a milestone that collects them later would just be a license for the earlier ones to ship unfinished.
 

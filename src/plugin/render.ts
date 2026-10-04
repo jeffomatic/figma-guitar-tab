@@ -30,20 +30,44 @@ const solid = (hex: string): SolidPaint => ({ type: "SOLID", color: hexToRgb(hex
 function createItem(item: SceneItem, font: FontName): SceneNode {
   switch (item.kind) {
     case "line": {
-      // A LineNode has zero height and is drawn along its own x axis. Only
-      // horizontal lines occur in tablature; the fretboard's vertical fret
-      // boundaries arrive at M7 and will need a rotation.
-      if (item.y1 !== item.y2) {
-        throw new Error(`${item.name}: only horizontal lines are supported`);
+      // Every line -- strings, measure breaks, and the fretboard's boundaries --
+      // is drawn as a rectangle of exactly the stroke's thickness, never as a
+      // LineNode.
+      //
+      // A LineNode's ink does not sit where its geometry says. A rotated one
+      // drew half a stroke off along its length (measured: a transform placing
+      // a break at y 7.5 for 81px drew low at both ends while the inspector
+      // reported exactly that geometry), and a horizontal one does not straddle
+      // its `y` either -- which left every string line half a stroke clear of
+      // where the formulas put it, and every corner with a notch.
+      //
+      // A rectangle has no pivot, cap or stroke-alignment semantics: its ink
+      // fills exactly [x, x+width] x [y, y+height]. That is what makes a break
+      // meet a string line squarely, since both are then positioned from the
+      // same centre line by the same half-thickness.
+      const horizontal = item.y1 === item.y2;
+      const vertical = item.x1 === item.x2;
+      if (!horizontal && !vertical) {
+        throw new Error(`${item.name}: lines must be axis-aligned`);
       }
-      const line = figma.createLine();
-      line.name = item.name;
-      line.resize(item.x2 - item.x1, 0);
-      line.x = item.x1;
-      line.y = item.y1;
-      line.strokes = [solid(item.stroke)];
-      line.strokeWeight = item.strokeWeight;
-      return line;
+
+      const thickness = item.strokeWeight;
+      const rect = figma.createRectangle();
+      rect.name = item.name;
+
+      if (horizontal) {
+        rect.x = Math.min(item.x1, item.x2);
+        rect.y = item.y1 - thickness / 2;
+        rect.resize(Math.abs(item.x2 - item.x1), thickness);
+      } else {
+        rect.x = item.x1 - thickness / 2;
+        rect.y = Math.min(item.y1, item.y2);
+        rect.resize(thickness, Math.abs(item.y2 - item.y1));
+      }
+
+      rect.fills = [solid(item.stroke)];
+      rect.strokes = [];
+      return rect;
     }
 
     case "rect": {

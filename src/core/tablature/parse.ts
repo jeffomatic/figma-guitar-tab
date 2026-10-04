@@ -14,11 +14,16 @@ export interface Cell {
   characters: string;
 }
 
-/** One moment in time: the cells sharing a start column, by string. */
-export interface Slot {
+/**
+ * One position along the row's horizontal axis.
+ *
+ * Either the cells sharing a start column, or a measure break -- which holds no
+ * cells and no width, and exists to take up a position so the spacing rules
+ * give it a gap on each side.
+ */
+export type Slot =
   /** Ordered by stringIndex. At most one cell per string, by construction. */
-  cells: Cell[];
-}
+  { kind: "notes"; cells: Cell[] } | { kind: "break" };
 
 export interface RowGroup {
   /**
@@ -59,17 +64,24 @@ interface SourceLine {
   line: number;
 }
 
-function isSeparator(c: string): boolean {
-  return c === "|" || (c !== "" && c.trim() === "");
+function isWhitespace(c: string): boolean {
+  return c !== "" && c.trim() === "";
 }
 
 /** A cell character: anything that is not a hyphen, whitespace or pipe. */
 function isCellChar(c: string): boolean {
-  return c !== "" && c !== "-" && !isSeparator(c);
+  return c !== "" && c !== "-" && c !== "|" && !isWhitespace(c);
 }
 
 /**
- * Step 2: `label? separators? playable`, where playable must begin with `-`.
+ * Step 2: `label? whitespace* playable`, where the playable region opens with an
+ * optional measure break and then must have a hyphen.
+ *
+ * The opening break is inside the playable region rather than part of the
+ * prefix, so a line that writes one has its columns offset by one from a line
+ * that doesn't -- which is exactly why a break must appear on every string or
+ * none, and why an inconsistent one surfaces as a misalignment.
+ *
  * Returns null when the line doesn't fit the form.
  */
 function splitPrefix(text: string): { label: string; playableStart: number } | null {
@@ -78,26 +90,84 @@ function splitPrefix(text: string): { label: string; playableStart: number } | n
   const label = text.slice(0, i);
 
   let j = i;
-  while (isSeparator(text.charAt(j))) j++;
+  while (isWhitespace(text.charAt(j))) j++;
 
-  // A label has to be terminated, or its boundary isn't decidable: `3-5-7`.
+  const start = j;
+  // Whitespace may precede an opening break but not follow it: `e| ---` is not
+  // a line we can place columns on.
+  if (text.charAt(j) === "|") j++;
+
+  // A label has to be terminated -- by whitespace or by the opening break -- or
+  // its boundary isn't decidable: `3-5-7` and `e-1-` both fail here.
   if (label.length > 0 && j === i) return null;
   if (text.charAt(j) !== "-") return null;
 
-  return { label, playableStart: j };
+  return { label, playableStart: start };
 }
 
-/** Step 3: maximal runs of cell characters within the playable region. */
-function tokenize(line: SourceLine, stringIndex: number, playableStart: number): RawCell[] {
+/** A measure break before it has been checked against the other strings. */
+interface RawBreak {
+  /** Column within the playable region. */
+  start: number;
+  line: number;
+  column: number;
+  /** True at the region's first or last column, where the row brackets it anyway. */
+  atEdge: boolean;
+}
+
+/**
+ * Step 3: maximal runs of cell characters, plus the pipes between them.
+ *
+ * A pipe must be flanked by hyphens unless it sits at the region's first or
+ * last column, where an opening or closing break has nothing beside it. That
+ * rule is what rejects a pipe abutting a cell, so no overlap check is needed
+ * for breaks.
+ */
+function tokenize(
+  line: SourceLine,
+  stringIndex: number,
+  playableStart: number,
+  push: Push,
+): { cells: RawCell[]; breaks: RawBreak[] } {
   const playable = line.text.slice(playableStart);
   const cells: RawCell[] = [];
+  const breaks: RawBreak[] = [];
 
   let i = 0;
   while (i < playable.length) {
-    if (!isCellChar(playable.charAt(i))) {
+    const char = playable.charAt(i);
+
+    if (char === "|") {
+      const first = i === 0;
+      const last = i === playable.length - 1;
+      const flanked =
+        (first || playable.charAt(i - 1) === "-") && (last || playable.charAt(i + 1) === "-");
+
+      if (flanked) {
+        breaks.push({
+          start: i,
+          line: line.line,
+          column: playableStart + i,
+          atEdge: first || last,
+        });
+      } else {
+        push(
+          "measure-break-without-hyphens",
+          'A measure line needs a hyphen on each side, as in "-|-".',
+          line.line,
+          playableStart + i,
+          1,
+        );
+      }
       i++;
       continue;
     }
+
+    if (!isCellChar(char)) {
+      i++;
+      continue;
+    }
+
     const start = i;
     while (isCellChar(playable.charAt(i))) i++;
     cells.push({
@@ -109,7 +179,7 @@ function tokenize(line: SourceLine, stringIndex: number, playableStart: number):
     });
   }
 
-  return cells;
+  return { cells, breaks };
 }
 
 function hasValue(characters: string): boolean {
@@ -249,6 +319,7 @@ function parseRowGroup(group: SourceLine[], push: Push): RowGroup {
   // --- Stages C and D: prefix, labels.
   const labels: string[] = [];
   const cells: RawCell[] = [];
+  const breaks: RawBreak[] = [];
   let malformed = false;
 
   group.forEach((line, stringIndex) => {
@@ -256,7 +327,8 @@ function parseRowGroup(group: SourceLine[], push: Push): RowGroup {
     if (!prefix) {
       push(
         "missing-leading-hyphen",
-        'Every line must begin with a hyphen, or with a string name followed by a space or "|".',
+        'Every line must begin with a hyphen, or with a string name followed by a space or "|".' +
+          " A measure line at the start must sit directly against the first hyphen.",
         line.line,
         0,
       );
@@ -266,7 +338,9 @@ function parseRowGroup(group: SourceLine[], push: Push): RowGroup {
     }
 
     labels.push(prefix.label);
-    for (const cell of tokenize(line, stringIndex, prefix.playableStart)) {
+    const tokens = tokenize(line, stringIndex, prefix.playableStart, push);
+    breaks.push(...tokens.breaks);
+    for (const cell of tokens.cells) {
       if (!hasValue(cell.characters)) {
         // Step 3: a cell needs a digit or an `x`. Kept in the structure anyway
         // -- the error blocks the render, and dropping it would make slot
@@ -302,19 +376,23 @@ function parseRowGroup(group: SourceLine[], push: Push): RowGroup {
     );
   }
 
-  // --- Stages F and G: slots by start column, then the caps.
-  const slots = assignSlots(cells, push);
+  // --- Stages F and G: slots by column, then the caps.
+  const breakColumns = resolveBreaks(breaks, group.length, push);
+  const slots = assignSlots(cells, breakColumns, push);
 
   // Suppressed when a line is malformed, for the same reason as partial-labels:
-  // the group has no notes *because* of that line, and reporting both would
-  // pile a consequence on top of its cause.
-  if (cells.length === 0 && !malformed) {
-    push("empty-row-group", "This block has no notes in it.", groupLine);
+  // the group is empty *because* of that line, and reporting both would pile a
+  // consequence on top of its cause.
+  //
+  // Breaks count: a row of nothing but measure lines still has positions to
+  // draw, so it is only empty when it has neither.
+  if (slots.length === 0 && !malformed) {
+    push("empty-row-group", "This block has nothing in it to draw.", groupLine);
   }
   if (slots.length > MAX_SLOTS_PER_ROW) {
     push(
       "too-many-slots",
-      `This block has ${String(slots.length)} note positions; keep it under ${String(MAX_SLOTS_PER_ROW)} by splitting it across blank lines.`,
+      `This block has ${String(slots.length)} positions; keep it under ${String(MAX_SLOTS_PER_ROW)} by splitting it across blank lines.`,
       groupLine,
     );
   }
@@ -323,8 +401,46 @@ function parseRowGroup(group: SourceLine[], push: Push): RowGroup {
 }
 
 /**
- * Step 4: cells sharing a start column are one slot, and a cell may not
- * straddle two slots.
+ * A measure break spans the row, so a pipe column must carry a pipe on every
+ * string. Returns the surviving interior columns, in order.
+ *
+ * Edge breaks are absorbed: every row is bracketed by an opening and a closing
+ * break whether or not the source wrote one, so an explicit edge pipe is
+ * validated and then dropped. That is what keeps a source with edge pipes
+ * parsing identically to one without -- TC-6 against TC-4.
+ */
+function resolveBreaks(breaks: RawBreak[], strings: number, push: Push): number[] {
+  const byColumn = new Map<number, RawBreak[]>();
+  for (const candidate of breaks) {
+    const existing = byColumn.get(candidate.start);
+    if (existing) existing.push(candidate);
+    else byColumn.set(candidate.start, [candidate]);
+  }
+
+  const columns: number[] = [];
+  for (const [column, found] of [...byColumn.entries()].sort((a, b) => a[0] - b[0])) {
+    if (found.length !== strings) {
+      for (const candidate of found) {
+        push(
+          "misaligned-measure-break",
+          "A measure line has to cross every string. Add the missing ones, or remove this one.",
+          candidate.line,
+          candidate.column,
+          1,
+        );
+      }
+      continue;
+    }
+    // Unanimous. Keep it unless the row draws it anyway.
+    if (!found.every((candidate) => candidate.atEdge)) columns.push(column);
+  }
+
+  return columns;
+}
+
+/**
+ * Step 4: cells sharing a start column are one slot, each surviving break is a
+ * slot of its own, and a cell may not straddle two slots.
  *
  * One sort and one sweep. `maxEnd` is the greatest span end among all cells
  * whose start column is strictly smaller than the current one, so a start below
@@ -332,7 +448,7 @@ function parseRowGroup(group: SourceLine[], push: Push): RowGroup {
  * never compared with each other -- they are already the same slot, which is
  * what lets TC-7's first slot hold `10` alongside `5`.
  */
-function assignSlots(cells: RawCell[], push: Push): Slot[] {
+function assignSlots(cells: RawCell[], breakColumns: number[], push: Push): Slot[] {
   const byStart = new Map<number, RawCell[]>();
   for (const cell of cells) {
     const existing = byStart.get(cell.start);
@@ -340,11 +456,17 @@ function assignSlots(cells: RawCell[], push: Push): Slot[] {
     else byStart.set(cell.start, [cell]);
   }
 
-  const starts = [...byStart.keys()].sort((a, b) => a - b);
+  const breaks = new Set(breakColumns);
+  const starts = [...new Set([...byStart.keys(), ...breakColumns])].sort((a, b) => a - b);
   const slots: Slot[] = [];
   let maxEnd = -1;
 
   for (const start of starts) {
+    if (breaks.has(start)) {
+      slots.push({ kind: "break" });
+      continue;
+    }
+
     const group = byStart.get(start) ?? [];
     group.sort((a, b) => a.stringIndex - b.stringIndex);
 
@@ -365,6 +487,7 @@ function assignSlots(cells: RawCell[], push: Push): Slot[] {
     }
 
     slots.push({
+      kind: "notes",
       cells: group.map(({ stringIndex, characters }) => ({ stringIndex, characters })),
     });
   }

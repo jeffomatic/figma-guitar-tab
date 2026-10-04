@@ -114,3 +114,23 @@ export const TC9 = source(`
 -x-2-
 -x-3-
 `);
+
+/** TC-10 — measure breaks. */
+export const TC10 = source(`
+e|-1-|-2-|
+B|---|---|
+G|---|---|
+D|---|---|
+A|---|---|
+E|---|---|
+`);
+
+/** TC-11 — empty measures. */
+export const TC11 = source(`
+----|----
+----|----
+----|----
+----|----
+----|----
+----|----
+`);

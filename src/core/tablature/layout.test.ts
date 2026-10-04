@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { analyticMeasure } from "../measure";
 import { clearance, inkColor, knockoutFill, stringLabelGap, tablatureDefaults } from "../settings";
-import { TC1, TC2, TC3, TC4, TC5, TC6, TC7, TC9 } from "./fixtures";
+import { TC1, TC10, TC11, TC2, TC3, TC4, TC5, TC6, TC7, TC9 } from "./fixtures";
 import { layoutTablature, type RowScene, type SceneItem, type TablatureScene } from "./layout";
 import { parseTablature } from "./parse";
 
@@ -30,6 +30,12 @@ const px = (n: number): number => Math.round(n * 1e6) / 1e6;
 const kinds = (r: RowScene, kind: SceneItem["kind"]): SceneItem[] =>
   r.items.filter((item) => item.kind === kind);
 
+/** Measure breaks are lines too, so the two have to be told apart by name. */
+const stringLines = (r: RowScene): SceneItem[] =>
+  kinds(r, "line").filter((item) => item.name.startsWith("String "));
+const breakLines = (r: RowScene): SceneItem[] =>
+  kinds(r, "line").filter((item) => item.name.startsWith("Measure Break "));
+
 const named = (r: RowScene, name: string): SceneItem => {
   const item = r.items.find((candidate) => candidate.name === name);
   if (!item) throw new Error(`no item named ${name}`);
@@ -43,14 +49,17 @@ const { fontSize, noteGap, stringGap, strokeWeight } = tablatureDefaults;
 const charWidth = analyticMeasure("x", fontSize);
 const labelColumn = charWidth + stringLabelGap;
 const padY = fontSize / 2 + clearance;
-const firstSlotX = labelColumn + noteGap / 2;
+// The opening measure break sits at the label column; the first slot is a
+// full gap past it.
+const openX = labelColumn;
+const firstSlotX = openX + noteGap;
 const knockoutHeight = strokeWeight + 2 * clearance;
 
 describe("tablature layout", () => {
   it("the spec's stated constants come out of the formulas", () => {
     expect(px(labelColumn)).toBe(15.2);
     expect(px(padY)).toBe(8);
-    expect(px(firstSlotX)).toBe(23.2);
+    expect(px(firstSlotX)).toBe(31.2);
     expect(px(knockoutHeight)).toBe(5);
     expect(px(charWidth)).toBe(7.2);
   });
@@ -65,7 +74,7 @@ describe("tablature layout", () => {
       if (item.kind !== "text") throw new Error("expected text");
       return px(item.x);
     });
-    expect(slotX).toEqual([23.2, 53.6, 105.6]);
+    expect(slotX).toEqual([31.2, 61.6, 113.6]);
 
     // Each advance is its own widest cell plus noteGap -- nothing is a
     // multiple of anything, and the gap is the same both times.
@@ -73,8 +82,10 @@ describe("tablature layout", () => {
     expect(px(slotX[2] ?? 0)).toBe(px((slotX[1] ?? 0) + 36 + noteGap));
 
     // Row width = X(N-1) + W(N-1) + noteGap / 2.
-    expect(px(r.width)).toBe(120.8);
-    expect(px(r.width)).toBe(px((slotX[2] ?? 0) + charWidth + noteGap / 2));
+    expect(px(r.width)).toBe(137.8);
+    // The closing break, plus a whole stroke: half is what the ink occupies,
+    // but that lands exactly on the clip boundary and gets cut.
+    expect(px(r.width)).toBe(px((slotX[2] ?? 0) + charWidth + noteGap + strokeWeight));
 
     expect(texts).toHaveLength(6);
   });
@@ -86,12 +97,12 @@ describe("tablature layout", () => {
 
     const expected = [
       // name, x, width, y -- strings 0-based, as everywhere else.
-      ["Knockout Slot 0 String 0", 21.2, 18.4, 5.5],
-      ["Knockout Slot 1 String 0", 51.6, 40, 5.5],
-      ["Knockout Slot 2 String 0", 103.6, 11.2, 5.5],
-      ["Knockout Slot 0 String 1", 21.2, 11.2, 21.5],
-      ["Knockout Slot 2 String 1", 103.6, 11.2, 21.5],
-      ["Knockout Slot 0 String 5", 21.2, 11.2, 85.5],
+      ["Knockout Slot 0 String 0", 29.2, 18.4, 5.5],
+      ["Knockout Slot 1 String 0", 59.6, 40, 5.5],
+      ["Knockout Slot 2 String 0", 111.6, 11.2, 5.5],
+      ["Knockout Slot 0 String 1", 29.2, 11.2, 21.5],
+      ["Knockout Slot 2 String 1", 111.6, 11.2, 21.5],
+      ["Knockout Slot 0 String 5", 29.2, 11.2, 85.5],
     ] as const;
 
     for (const [name, x, width, y] of expected) {
@@ -130,13 +141,13 @@ describe("tablature layout", () => {
 
   it("TC-7 string lines are single nodes spanning the row", () => {
     const r = row(scene(TC7), 0);
-    const lines = kinds(r, "line");
+    const lines = stringLines(r);
     expect(lines).toHaveLength(6);
 
     for (const [index, line] of lines.entries()) {
       if (line.kind !== "line") throw new Error("expected line");
       expect(line.name).toBe(`String ${String(index)}`);
-      expect([px(line.x1), px(line.x2)]).toEqual([15.2, 120.8]);
+      expect([px(line.x1), px(line.x2)]).toEqual([15.2, 136.8]);
       expect(px(line.y1)).toBe(px(line.y2));
       expect(px(line.y1)).toBe(px(padY + index * stringGap));
       expect(line.strokeWeight).toBe(strokeWeight);
@@ -153,12 +164,12 @@ describe("tablature layout", () => {
     expect(row(s, 0).items).toEqual(row(s, 1).items);
 
     const r = row(s, 0);
-    expect(kinds(r, "line")).toHaveLength(6);
+    expect(stringLines(r)).toHaveLength(6);
     expect(kinds(r, "rect")).toHaveLength(30);
     expect(r.items.filter((i) => i.name.startsWith("Label "))).toHaveLength(6);
     expect(r.items.filter((i) => i.name.startsWith("Slot "))).toHaveLength(30);
 
-    expect(px(r.width)).toBe(131.2);
+    expect(px(r.width)).toBe(148.2);
     expect(px(r.height)).toBe(96);
     expect(px(r.height)).toBe(px(2 * padY + 5 * stringGap));
 
@@ -166,7 +177,7 @@ describe("tablature layout", () => {
     const xs = kinds(r, "rect")
       .filter((item) => item.name.endsWith("String 0"))
       .map((item) => (item.kind === "rect" ? px(item.x) : 0));
-    expect(xs).toEqual([21.2, 44.4, 67.6, 90.8, 114]);
+    expect(xs).toEqual([29.2, 52.4, 75.6, 98.8, 122]);
   });
 
   it("TC-1 defaults the labels to standard tuning, right-aligned", () => {
@@ -221,9 +232,9 @@ describe("tablature layout", () => {
     const second = named(r, "Slot 1 String 0");
     if (first.kind !== "text" || second.kind !== "text") throw new Error("expected text");
 
-    expect(px(first.x)).toBe(23.2);
-    expect(px(second.x)).toBe(46.4);
-    expect(px(r.width)).toBe(61.6);
+    expect(px(first.x)).toBe(31.2);
+    expect(px(second.x)).toBe(54.4);
+    expect(px(r.width)).toBe(78.6);
 
     // Every cell is one character, so every knockout is 11.2 x 5.
     for (const rect of kinds(r, "rect")) {
@@ -255,36 +266,95 @@ describe("tablature layout", () => {
     expect(labels).toEqual(["e", "B", "G", "D", "A", "E"]);
   });
 
-  it("every gap between a cell and the next slot is exactly noteGap", () => {
-    // The regression test for the bug this formula replaced. The advance used
-    // to be max(slotPitch, W + cellGap), so narrow slots were governed by the
-    // pitch and wide ones by a separate floor -- which made the whitespace
-    // *shrink* as cells got wider: 16.8px after one character, 4px after three.
-    for (const [name, source] of Object.entries({ TC1, TC2, TC3, TC5, TC7, TC9 })) {
+  it("every gap between consecutive slots is exactly noteGap", () => {
+    // The regression test for the formula this replaced, now walking slots
+    // rather than cells: the advance used to be max(slotPitch, W + cellGap), so
+    // the whitespace *shrank* as cells got wider -- 16.8px after one character,
+    // 4px after three. Walking slots rather than cells is also what makes a
+    // measure break covered: a break is a zero-width slot, so it must sit one
+    // gap from its neighbours on each side rather than two.
+    for (const [name, source] of Object.entries({ TC1, TC2, TC3, TC5, TC7, TC9, TC10, TC11 })) {
       for (const r of scene(source).rows) {
-        const slotCount = r.items.filter((i) => i.name.startsWith("Knockout Slot 0 ")).length
-          ? new Set(
-              r.items.filter((i) => i.name.startsWith("Slot ")).map((i) => i.name.split(" ")[1]),
-            ).size
-          : 0;
+        // Each slot as (left edge, right edge). A break is a point.
+        const breaks = breakLines(r).map((item) => (item.kind === "line" ? item.x1 : 0));
+        const notes = new Map<number, number>();
+        for (const item of r.items) {
+          if (item.kind !== "text" || !item.name.startsWith("Slot ")) continue;
+          const right = item.x + analyticMeasure(item.characters, fontSize);
+          notes.set(item.x, Math.max(notes.get(item.x) ?? 0, right));
+        }
 
-        for (let n = 0; n < slotCount - 1; n++) {
-          const cellsIn = (slot: number): SceneItem[] =>
-            r.items.filter((i) => i.name.startsWith(`Slot ${String(slot)} String `));
+        const edges = [
+          ...breaks.map((x) => [x, x] as const),
+          ...[...notes].map(([left, right]) => [left, right] as const),
+        ].sort((a, b) => a[0] - b[0]);
 
-          const here = cellsIn(n);
-          const next = cellsIn(n + 1);
-          // X(n) -- every cell in a slot shares one left edge.
-          const left = Math.min(...here.map((i) => (i.kind === "text" ? i.x : 0)));
-          // W(n) -- the widest cell in the slot.
-          const widest = Math.max(
-            ...here.map((i) => (i.kind === "text" ? analyticMeasure(i.characters, fontSize) : 0)),
-          );
-          const nextLeft = Math.min(...next.map((i) => (i.kind === "text" ? i.x : 0)));
-
-          expect(px(nextLeft - (left + widest)), `${name} slot ${String(n)}`).toBe(px(noteGap));
+        for (let i = 0; i < edges.length - 1; i++) {
+          const gap = (edges[i + 1]?.[0] ?? 0) - (edges[i]?.[1] ?? 0);
+          expect(px(gap), `${name} gap after slot ${String(i)}`).toBe(px(noteGap));
         }
       }
+    }
+  });
+
+  it("TC-10 brackets the row and spaces an interior break evenly", () => {
+    const r = row(scene(TC10), 0);
+    const xs = breakLines(r).map((item) => (item.kind === "line" ? px(item.x1) : 0));
+    // Opening, the written interior break, closing. The written edge breaks
+    // were absorbed -- the row draws them anyway, so there are three, not five.
+    expect(xs).toEqual([15.2, 54.4, 93.6]);
+    expect(px(r.width)).toBe(94.6);
+
+    // Each break joins the top string's line to the bottom's, overshooting
+    // each by half a stroke so the corners have no uninked notch.
+    for (const line of breakLines(r)) {
+      if (line.kind !== "line") throw new Error("expected line");
+      expect([px(line.y1), px(line.y2)]).toEqual([7.5, 88.5]);
+      expect([px(line.y1), px(line.y2)]).toEqual([
+        px(padY - strokeWeight / 2),
+        px(padY + 5 * stringGap + strokeWeight / 2),
+      ]);
+      expect(line.strokeWeight).toBe(strokeWeight);
+    }
+  });
+
+  it("TC-11 draws a row of empty measures with no notes at all", () => {
+    const r = row(scene(TC11), 0);
+    expect(r.items.filter((item) => item.name.startsWith("Slot "))).toEqual([]);
+    expect(kinds(r, "rect")).toEqual([]);
+    expect(breakLines(r).map((item) => (item.kind === "line" ? px(item.x1) : 0))).toEqual([
+      15.2, 31.2, 47.2,
+    ]);
+    expect(px(r.width)).toBe(48.2);
+  });
+
+  it("a break's ink stays inside the frame it is clipped by", () => {
+    // The bug this guards: half a stroke of allowance is exactly enough in
+    // arithmetic and not enough in practice, because the ink then sits on the
+    // clip boundary. Checked at the heaviest stroke, where it is visible.
+    for (const weight of [tablatureDefaults.strokeWeight, 8]) {
+      for (const source of [TC1, TC7, TC10, TC11]) {
+        const r = row(scene(source, { strokeWeight: weight }), 0);
+        for (const line of breakLines(r)) {
+          if (line.kind !== "line") throw new Error("expected line");
+          expect(px(line.x1 + weight / 2)).toBeLessThan(px(r.width));
+          expect(px(line.x1 - weight / 2)).toBeGreaterThan(0);
+          // Vertically too: the overshoot must stay inside padY's slack.
+          expect(px(line.y1)).toBeGreaterThan(0);
+          expect(px(line.y2)).toBeLessThan(px(r.height));
+        }
+      }
+    }
+  });
+
+  it("a row with no written breaks still gets exactly two", () => {
+    const r = row(scene(TC1), 0);
+    const xs = breakLines(r).map((item) => (item.kind === "line" ? px(item.x1) : 0));
+    expect(xs).toEqual([15.2, 147.2]);
+    // The string lines run between them.
+    for (const line of stringLines(r)) {
+      if (line.kind !== "line") throw new Error("expected line");
+      expect([px(line.x1), px(line.x2)]).toEqual([15.2, 147.2]);
     }
   });
 
@@ -295,22 +365,25 @@ describe("tablature layout", () => {
     expect(wild.rowGap).toBe(9999);
   });
 
-  it("z-order is labels, lines, knockouts, text", () => {
+  it("z-order is labels, string lines, measure breaks, knockouts, text", () => {
     const r = row(scene(TC7), 0);
     const order = r.items.map((item) =>
       item.name.startsWith("Label ")
         ? "label"
         : item.name.startsWith("String ")
           ? "line"
-          : item.name.startsWith("Knockout ")
-            ? "knockout"
-            : "text",
+          : item.name.startsWith("Measure Break ")
+            ? "break"
+            : item.name.startsWith("Knockout ")
+              ? "knockout"
+              : "text",
     );
     type Group = (typeof order)[number];
     const firstIndex = (group: Group): number => order.indexOf(group);
     const lastIndex = (group: Group): number => order.lastIndexOf(group);
     expect(lastIndex("label")).toBeLessThan(firstIndex("line"));
-    expect(lastIndex("line")).toBeLessThan(firstIndex("knockout"));
+    expect(lastIndex("line")).toBeLessThan(firstIndex("break"));
+    expect(lastIndex("break")).toBeLessThan(firstIndex("knockout"));
     expect(lastIndex("knockout")).toBeLessThan(firstIndex("text"));
   });
 

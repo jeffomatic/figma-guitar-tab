@@ -36,12 +36,13 @@ Note in particular that *string* and *fret* are distinct: a number appearing in 
 | **string** | One of the guitar's strings. Identified by its **string index**: line 1 of a group of ASCII lines is the highest-pitched string, and the last line is the lowest-pitched. Rendered as a horizontal line node in both modes. |
 | **fret number** | A position along a string, counted from the nut. `0` means the open string. This is what the numbers in ASCII source denote. |
 | **note cell** | The text occupying one slot on one string: a run of ASCII characters denoting what is played there — a bare fret number (`4`), one decorated with technique notation (`4/6`, `2h3p2`), or an `x` for a muted note. A cell may encode more than one note. Its rendering is a single text node. |
-| **slot** | One moment in time in a tablature row: the note cells played simultaneously, at most one per string. Slots are ordered left to right and are the unit of horizontal position — which cells share a slot is decided by start column, not by ordinal position. |
+| **slot** | One position along a tablature row's horizontal axis, and the unit of horizontal spacing. A slot is either the note cells sounding together — at most one per string, decided by start column rather than by ordinal position — or a *measure break*, which has no cells and no width. Slots are ordered left to right. |
+| **measure break** | A boundary between measures, written as a column of `|` characters spanning every string, and rendered as a vertical line joining the top and bottom string lines. Every row is bracketed by one whether or not the source writes it. |
 | **slot advance** | The horizontal distance from one slot's left edge to the next slot's left edge. Borrowed from typography, where a glyph's advance is the distance from its origin to the next glyph's. It is not constant: a slot advances by its widest cell's width plus `noteGap`, so a slot holding a wide cell pushes the next one further out. |
 | **row** | A horizontal band of tablature containing one set of string lines. A tab too long to fit one line of ASCII is split across several rows. |
 | **row frame** | The Figma frame holding one row's line nodes and text nodes. |
 | **row group** | The block of source lines that produces one row: the lines between two blank lines, one line per string. *Row* is the rendered band, *row group* its source. |
-| **playable region** | What remains of a tablature source line after its string label and any leading whitespace or pipes are stripped. It always begins with a `-`. Column indices are measured from its first character, so prefixes of differing widths don't skew alignment. |
+| **playable region** | What remains of a tablature source line after its string label and any leading whitespace are stripped. It begins with an opening measure break if the line writes one, and otherwise with a `-`. Column indices are measured from its first character, so prefixes of differing widths don't skew alignment. |
 | **parent frame** | The Figma frame containing all row frames (tablature) or the whole diagram (fretboard). Carries the plugin data. |
 | **hyphenspace** | Runs of `-` characters separating note cells in tablature source. Their length does not affect rendered geometry. |
 | **string label** | The text naming a string's tuning (`e`, `B`, `G`, ...), rendered as a text node to the left of the diagram. Always rendered: taken from the source line when it supplies one, otherwise from the default tuning for that string count. |
@@ -74,6 +75,7 @@ Note the inversion in the first row below: *tab* is a poor spec term because thi
 | Vertical gap between rows | — | `rowGap` | Row spacing |
 | Width of a drawn fret | fret gap | `fretGapWidth` | Fret width |
 | Leading and trailing frets | fret window | `leadingFrets`, `trailingFrets` | Frets before / after |
+| Boundary between measures | measure break | `"break"` | measure line |
 | The source field | ASCII tab | `source` | ASCII tab |
 | Drawing the diagram | render | `"render"` | Render |
 | Dismissing the plugin | — | `"close"` | Close |
@@ -99,29 +101,41 @@ Runs of consecutive blank lines count as one separator, and leading/trailing bla
 Each row group holds one line per string, ordered highest-pitched first.
 A row group MUST have 4, 6 or 7 lines (`unsupported-string-count`), and every row group in a source must have the same count, or the rows could not align (`inconsistent-string-count`).
 
-**Step 2 — split each line into prefix and playable region.** Every line has the form `label? separators? playable`:
+**Step 2 — split each line into prefix and playable region.** Every line has the form `label? whitespace* playable`:
 
 | Part | Definition |
 | --- | --- |
 | `label` | Optional. A run of characters that are none of `-`, whitespace, `\|`. |
-| `separators` | Whitespace and `\|` characters. Required if a `label` is present, optional otherwise. |
-| `playable` | The *playable region*: the rest of the line, which MUST begin with `-`. |
+| `whitespace` | Any run of whitespace. Required if a `label` is present, optional otherwise. |
+| `playable` | The *playable region*: the rest of the line. It begins with an optional opening measure break — a single `\|` — and then MUST have a `-` before anything else. |
 
-Requiring the playable region to begin with a hyphen is how real-world ASCII tab is written, and it is what makes the label boundary decidable: the playable region starts at the first `-` that follows the optional label and separators.
-A line that doesn't fit the form is a `missing-leading-hyphen` error — `3-5-7` fails, because `3` is not followed by a separator, so the line neither starts with a hyphen nor carries a terminated label.
-All of `-----`, `|-----`, `e -----`, `e|-----` and `E |-2-` fit.
+Requiring a hyphen before any note cell is how real-world ASCII tab is written, and it is what makes the label boundary decidable: the playable region starts at the first `-`, or at the single `\|` immediately preceding it.
+A line that doesn't fit the form is a `missing-leading-hyphen` error — `3-5-7` fails, because `3` is not followed by whitespace, so the line neither starts with a hyphen nor carries a terminated label.
+All of `-----`, `|-----`, `e -----`, `e|-----` and `E |-2-` fit. `e| ---` does not: whitespace may precede the opening break but not follow it.
 
 Column indices in step 4 are measured from the first character of the playable region, so lines whose prefixes differ in width (`e |`, `B|`) still align.
+The opening measure break is inside that region rather than part of the prefix, so a line that writes one and a line that doesn't have origins one column apart — which is why a measure break must appear on every string or none, and why an inconsistent one is caught as a misalignment rather than silently shifting a row's columns.
 
 **Step 3 — tokenize.** Within a playable region, a *note cell* is a maximal run of characters that are none of: `-`, whitespace, `|`.
-Hyphens, spaces and pipes carry no meaning beyond separating cells, which is why hyphenspace collapses (TC-2).
+Hyphens and spaces carry no meaning beyond separating cells, which is why hyphenspace collapses (TC-2).
+A `|` is a measure break, not a separator, and carries the two rules below.
 Each cell MUST contain at least one digit or at least one `x`/`X`; a cell that contains neither is a validation error.
 A digit makes it a fret, and an `x` makes it a muted or dead note — the standard ASCII notation for a string struck without being fretted, which real-world tab uses freely (`-x-x-x-`, a muted strum on every string).
 All other characters in a cell are technique notation and are preserved verbatim in the rendered text, as are the `x` characters themselves.
 
+Each `|` in a playable region must satisfy both of:
+
+- **It is flanked by hyphens**, on the left and on the right, unless it is the region's first character — an opening break has nothing to its left — or its last, where a closing break has nothing to its right.
+  Otherwise it is a `measure-break-without-hyphens` error, anchored at the pipe. This is what rejects `-12|-`, where the pipe abuts a cell.
+- **Its column carries a `|` on every string in the row group.** A measure break is a boundary across the whole row, so a pipe that only some strings write is a `misaligned-measure-break` error, anchored at each pipe in that column.
+
+A break at the region's first or last column is **absorbed**: every row is bracketed by an opening and a closing break whether or not the source writes one, so writing them changes nothing and omitting them costs nothing. Only breaks between hyphen runs survive into the parse result.
+
 **Step 4 — assign slots.** Each cell has a start column, and a column span `[start, start + length)`, within its playable region.
-Cells in the same row group belong to the same *slot* when they share a **start column**, and slots are ordered by that column.
-A slot represents one moment in time: every cell in it is played simultaneously.
+Cells in the same row group belong to the same *slot* when they share a **start column**, and each surviving measure break is a slot of its own.
+Slots are ordered by column, interleaving the two kinds.
+A note slot represents one moment in time: every cell in it is played simultaneously.
+A break slot holds no cells and has no width; it exists to take up a position, so that the spacing rules give it a gap on each side.
 
 Cells that are meant to sound together are therefore written flush, and a cell may not straddle the boundary between two slots: a cell whose span overlaps a cell in a *different* slot is an `overlapping-cells` error.
 Cells sharing a start column may overlap freely, since they are one slot already — `10` and `5` beginning at the same column is TC-7's first slot.
@@ -147,7 +161,7 @@ Consequences worth stating explicitly, since they are the cases that break naive
 - A multi-character cell occupies its full column span, so a cell on another string either shares its start column or begins after that span ends — in which case it lands in a **later** slot (TC-3).
 - Absolute column values never reach the renderer — only slot ordering — so hyphen runs of any length produce identical geometry (TC-2).
 
-**Step 5 — emit structure.** The parse result is an ordered list of row groups; each row group holds the string labels the source supplied, if any, and its ordered list of slots; each slot holds at most one cell per string index.
+**Step 5 — emit structure.** The parse result is an ordered list of row groups; each row group holds the string labels the source supplied, if any, and its ordered list of slots, note slots and break slots interleaved; each note slot holds at most one cell per string index.
 Filling in default-tuning labels for the strings the source didn't name is a layout concern, not a parsing one, so the parse result records only what was written.
 
 Rendering maps this structure to a parent frame containing one *row frame* per row group.
@@ -173,10 +187,10 @@ These three counts are the instruments the plugin supports: four is standard bas
 A source with any other string count is rejected, so every rendered diagram has a default tuning available and a label for every string.
 
 The `label` part of the line grammar in [step 2](#parsing) is the label.
-A prefix of pipes and whitespace alone carries no label: those characters don't contribute anything to rendering, but since they are conventions of tablature writing, we accommodate their presence (TC-6).
+A prefix of whitespace alone carries no label.
+A leading `|` is an opening measure break, which every row gets regardless, so writing one changes nothing about the result (TC-6).
 
-Pipe characters appearing *inside* the playable region are currently ignored rather than rendered as bar lines.
-See [Non-goals](#non-goals).
+Pipes inside the playable region are measure breaks; see [step 3](#parsing).
 
 ### Tablature render model
 
@@ -211,8 +225,14 @@ Two quantities are named here because the rest of this document refers to them:
 - **`L`**, the label column's width: the widest label that row renders, plus `stringLabelGap`. String lines start at `L`.
 - **`padY`**, the vertical padding above the first string and below the last: half the tallest ornament on a string line, plus `clearance`.
 
-Each slot's left edge accumulates from the previous slot's: a slot advances by its widest cell plus `noteGap`.
-The row leads in and out by half a gap, reproducing the leading and trailing hyphens of conventional ASCII tab.
+Each slot's left edge accumulates from the previous slot's: a slot advances by its widest cell plus `noteGap`, and a break slot has no cells, so it advances by `noteGap` alone.
+A break therefore sits one full gap from whatever precedes it and one full gap from whatever follows, which is what makes a row of measures read evenly.
+
+The row is **bracketed by measure breaks**: the opening one sits at `L`, where the string lines begin, and the closing one a full gap past the last slot, where they end.
+Those two replace what used to be a half-gap lead-in and tail-out, and they are drawn whether or not the source wrote them.
+
+The row's width is the closing break's position plus **a whole stroke weight**.
+Half of one is what the break's ink actually occupies, and it is not enough: it puts the ink's outer edge exactly on the bounds of a frame that clips, where it is cut. A whole weight leaves the ink strictly inside, which is the same slack `padY` leaves vertically with `clearance`. The left edge needs no allowance, since `L` is always wider than the heaviest stroke.
 
 `padY` exists for two reasons, and is not cosmetic:
 
@@ -241,7 +261,12 @@ Two properties of this model are worth stating, because the obvious simpler form
 
 #### String lines and knockouts
 
-Each string is **one** horizontal `LineNode` spanning `x` from `L` to `rowWidth`, with a stroke of **strokeWeight** in **inkColor** and no caps.
+Each string is **one** horizontal line spanning `x` from the opening measure break to the closing one, as thick as **strokeWeight** in **inkColor**, centred on the string's `y`.
+Each measure break is one **vertical** line at its own `x`, running from the top string's `y` to the bottom string's, as thick as **strokeWeight** in **inkColor** — and overshooting each end by **half a stroke weight**, so that it covers the full thickness of the string lines it meets.
+
+**Every line is drawn as a rectangle, not a `LineNode`.** A `LineNode`'s ink does not sit where its geometry says: a rotated one draws off along its length, and a horizontal one does not straddle its `y`. A rectangle's ink fills exactly its bounds, so a line of thickness `w` centred on a coordinate is a rectangle offset by `w / 2` — which is what makes a break meet a string line squarely, since both are then positioned from the same centre line by the same half-thickness. This is a rendering concern: layout emits a line as two endpoints and a thickness, and says nothing about which node draws it.
+
+The overshoot is what makes the row's corners clean. A break that stopped at the top string's `y` would stop at the *centre* of that string's stroke, leaving the outer half of its thickness uninked where the two lines meet: a notch at the corner, most visible at the closing break where there is no further line to hide it. Overshooting covers exactly that half. On an interior break it is invisible, running half a stroke past the outer strings and well inside `padY`.
 The line is never broken: where text would collide with it, an opaque rectangle hides it.
 
 Each note cell gets one `RectangleNode`, computed from that cell alone: centered on the string's line, extending `clearance` past the text on each side, filled with `knockoutFill`, opaque and unstroked.
@@ -250,7 +275,8 @@ Its width comes from **that cell's** measured text, never from the width of the 
 The rectangle only has to cover the line, which is `strokeWeight` thick, so its height is that plus a hair of `clearance` on each side rather than the height of the text.
 At the defaults that is 5 px, not 12.
 
-Z-order within a row frame is string labels, then string lines, then knockouts, then cell text.
+Z-order within a row frame is string labels, then string lines, then measure breaks, then knockouts, then cell text.
+Breaks group with the structural lines rather than the text: a break slot holds no cells, so no knockout ever covers one.
 Nothing is merged, clamped or inverted: rectangles are independent, and two that overlap are harmless.
 Three properties follow for free, all asserted in TC-8:
 
@@ -406,6 +432,30 @@ No diagnostics: an `x` is as valid a cell as a digit, and is rendered verbatim.
 ```
 
 Every cell is one character, so every slot advances by the same amount and every knockout is the same size — an `x` is measured and laid out exactly like a fret number, with no special case anywhere in parsing or layout.
+
+**TC-10 — measure breaks.** Interior breaks between note slots, with an explicit opening and closing break that the row would have drawn anyway.
+Pins that a break takes a position of its own with a full gap on each side, and that writing the edge breaks changes nothing.
+
+```
+e|-1-|-2-|
+B|---|---|
+G|---|---|
+D|---|---|
+A|---|---|
+E|---|---|
+```
+
+**TC-11 — empty measures.** Two measures with no notes in either, and no edge breaks written.
+A row with no note cells at all is still renderable when it has breaks to draw, which is the case `empty-row-group` must not reject.
+
+```
+----|----
+----|----
+----|----
+----|----
+----|----
+----|----
+```
 
 ## Fretboard diagram
 
@@ -873,10 +923,9 @@ The source either describes a tab that can be drawn or it doesn't, and none of t
 - A note cell holding neither a digit nor an `x` — `h` or `~` alone — names nothing to play.
 - A cell straddling two slots describes a simultaneity no renderer could honor; [step 4](#parsing) works the case through.
 - Caps on slots per row group and on row groups per source guard against pathological render times.
-- A row group with no note cells has nothing to render, and the row width formula has no last slot to measure from.
-
-A pipe inside the playable region is ignored rather than drawn as a bar line, and silently: it is a convention of writing tab, not a mistake.
-See [Non-goals](#non-goals).
+- A row group with no slots at all has nothing to render, and the row width formula has no last slot to measure from. A row of nothing but measure breaks is fine: it has positions to draw.
+- A `|` that is not flanked by hyphens is abutting a note cell or another pipe, and there is no reading of it as a boundary.
+- A `|` on some strings but not all cannot be a measure break, since a break spans the row. It is also how an inconsistent *opening* break is caught, which would otherwise shift one string's columns relative to the rest.
 
 ### Fretboard diagram
 
@@ -921,7 +970,6 @@ An implementation that adds any of it is doing unrequested work.
 
 | Deferred | Note |
 | --- | --- |
-| Bar lines | Pipes inside the playable region are currently ignored. Rendering them as vertical separators is a plausible v2, and the parser already discards them at a single known point. |
 | Backgrounds that are not white | Tablature knockouts and fretboard open markers are filled with `knockoutFill`, so on a dark frame or over artwork they show as white blocks. The fix is either a theme-aware fill or a return to cutting string lines into segments, which needs no fill at all. |
 | Color and theme settings | `inkColor` is fixed black. Exposing stroke and text color is a settings-table addition and a schema-compatible change. |
 | Fretboard position label (`5fr` style) | Every drawn fret is labeled instead. |

@@ -20,6 +20,8 @@ export type TablatureCode =
   | "inconsistent-string-count"
   | "cell-without-value"
   | "overlapping-cells"
+  | "measure-break-without-hyphens"
+  | "misaligned-measure-break"
   | "too-many-slots"
   | "too-many-rows"
   | "empty-row-group";

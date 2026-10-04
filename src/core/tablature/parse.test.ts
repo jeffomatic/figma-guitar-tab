@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseTablature, type RowGroup, type Slot, type TablatureParse } from "./parse";
-import { TC1, TC2, TC3, TC4, TC5, TC6, TC7, TC9 } from "./fixtures";
+import { TC1, TC10, TC11, TC2, TC3, TC4, TC5, TC6, TC7, TC9 } from "./fixtures";
 
 function at<T>(items: T[], index: number): T {
   const item = items[index];
@@ -10,8 +10,12 @@ function at<T>(items: T[], index: number): T {
 }
 
 const row = (parse: TablatureParse, index: number): RowGroup => at(parse.rows, index);
-const characters = (slot: Slot): string[] => slot.cells.map((cell) => cell.characters);
-const strings = (slot: Slot): number[] => slot.cells.map((cell) => cell.stringIndex);
+const cellsOf = (slot: Slot): { stringIndex: number; characters: string }[] =>
+  slot.kind === "notes" ? slot.cells : [];
+const characters = (slot: Slot): string[] => cellsOf(slot).map((cell) => cell.characters);
+const strings = (slot: Slot): number[] => cellsOf(slot).map((cell) => cell.stringIndex);
+/** Note slots only, so a measure break doesn't shift the indices under a test. */
+const noteSlots = (group: RowGroup): Slot[] => group.slots.filter((s) => s.kind === "notes");
 const codes = (parse: TablatureParse): string[] => parse.diagnostics.map((d) => d.code);
 
 const sixLines = (...lines: string[]): string => lines.join("\n");
@@ -48,7 +52,7 @@ describe("tablature structure", () => {
   });
 
   it("TC-3 long note cells", () => {
-    const slots = row(parseTablature(TC3), 0).slots;
+    const slots = noteSlots(row(parseTablature(TC3), 0));
     expect(slots).toHaveLength(2);
     // `2h3p2` spans columns 1-5, so the zeroes at column 7 are a later slot.
     expect(characters(at(slots, 0))).toEqual(["3", "2h3p2"]);
@@ -65,7 +69,7 @@ describe("tablature structure", () => {
   });
 
   it("TC-5 sparse strings", () => {
-    const slots = row(parseTablature(TC5), 0).slots;
+    const slots = noteSlots(row(parseTablature(TC5), 0));
     expect(slots).toHaveLength(3);
     // The `2` is its own slot: ordinal alignment would make it simultaneous
     // with the first chord.
@@ -80,7 +84,7 @@ describe("tablature structure", () => {
   });
 
   it("TC-7 mixed cell widths", () => {
-    const slots = row(parseTablature(TC7), 0).slots;
+    const slots = noteSlots(row(parseTablature(TC7), 0));
     expect(slots).toHaveLength(3);
     // The spec states these contents exactly: {10, 5, 3}, {12b14}, {7, 0}.
     expect(characters(at(slots, 0))).toEqual(["10", "5", "3"]);
@@ -90,7 +94,7 @@ describe("tablature structure", () => {
   });
 
   it("TC-9 muted notes", () => {
-    const slots = row(parseTablature(TC9), 0).slots;
+    const slots = noteSlots(row(parseTablature(TC9), 0));
     expect(slots).toHaveLength(2);
     expect(slots.flatMap(characters)).toHaveLength(12);
     // An `x` is as valid a cell as a digit, and needs no special case.
@@ -102,6 +106,28 @@ describe("tablature structure", () => {
     for (const [name, source] of Object.entries({ TC1, TC2, TC3, TC4, TC5, TC6, TC7, TC9 })) {
       expect(codes(parseTablature(source)), name).toEqual([]);
     }
+  });
+
+  it("TC-10 measure breaks take positions of their own", () => {
+    const group = row(parseTablature(TC10), 0);
+    // notes, break, notes -- the written edge breaks are absorbed, because the
+    // row draws them regardless.
+    expect(group.slots.map((slot) => slot.kind)).toEqual(["notes", "break", "notes"]);
+    expect(characters(at(group.slots, 0))).toEqual(["1"]);
+    expect(characters(at(group.slots, 2))).toEqual(["2"]);
+  });
+
+  it("TC-11 empty measures parse with no notes at all", () => {
+    const group = row(parseTablature(TC11), 0);
+    expect(group.slots.map((slot) => slot.kind)).toEqual(["break"]);
+    expect(codes(parseTablature(TC11))).toEqual([]);
+  });
+
+  it("writing the edge breaks changes nothing", () => {
+    // `|-1-|` and `-1-` must come out the same: the row brackets itself.
+    const bracketed = "|-1-|\n|---|\n|---|\n|---|\n|---|\n|---|";
+    const bare = "-1-\n---\n---\n---\n---\n---";
+    expect(parseTablature(bracketed)).toEqual(parseTablature(bare));
   });
 
   it("no slot holds two cells on one string", () => {
@@ -169,20 +195,48 @@ describe("tablature diagnostics", () => {
 
   it("accepts every prefix form the spec lists", () => {
     // All of `-----`, `|-----`, `e -----`, `e|-----` and `E |-2-` fit the step
-    // 2 grammar. They are split across two blocks because mixing labeled and
-    // unlabeled lines in one block is partial-labels, which is its own case.
-    const bare = sixLines("-----", "|-----", "  -1-", "-----", "|-1-", "-----");
-    const labeled = sixLines("e -----", "e|-----", "E |-2-", "D -1-", "A|-1-", "E -----");
-    expect(codes(parseTablature(bare))).toEqual([]);
-    expect(codes(parseTablature(labeled))).toEqual([]);
+    // 2 grammar. Four blocks, because two things can't be mixed within one:
+    // labeled and unlabeled lines are partial-labels, and a leading pipe is an
+    // opening measure break, which has to cross every string or none.
+    const bare = sixLines("-----", "-----", "  -1-", "-----", "-1-", "-----");
+    const bracketed = sixLines("|-----", "|-----", "|-1-", "|-----", "|-1-", "|-----");
+    const labeled = sixLines("e -----", "B -----", "G -1-", "D -----", "A -1-", "E -----");
+    const both = sixLines("e|-----", "B |-----", "G |-2-", "D|-1-", "A|-1-", "E|-----");
+
+    for (const [name, source] of Object.entries({ bare, bracketed, labeled, both })) {
+      expect(codes(parseTablature(source)), name).toEqual([]);
+    }
     expect(row(parseTablature(bare), 0).labels).toBeNull();
-    expect(row(parseTablature(labeled), 0).labels).toEqual(["e", "e", "E", "D", "A", "E"]);
+    expect(row(parseTablature(bracketed), 0).labels).toBeNull();
+    expect(row(parseTablature(both), 0).labels).toEqual(["e", "B", "G", "D", "A", "E"]);
   });
 
   it("cell-without-value is anchored at the cell", () => {
     const parse = parseTablature(sixLines("-1-h-", "-----", "-----", "-----", "-----", "-----"));
     expect(codes(parse)).toEqual(["cell-without-value"]);
     expect(at(parse.diagnostics, 0)).toMatchObject({ line: 0, column: 3, length: 1 });
+  });
+
+  it("measure-break-without-hyphens rejects a pipe against a cell", () => {
+    const parse = parseTablature(sixLines("-12|-", "-----", "-----", "-----", "-----", "-----"));
+    expect(codes(parse)).toEqual(["measure-break-without-hyphens"]);
+    expect(at(parse.diagnostics, 0)).toMatchObject({ line: 0, column: 3, length: 1 });
+  });
+
+  it("misaligned-measure-break rejects a pipe missing from a string", () => {
+    const parse = parseTablature(
+      sixLines("-1-|-2-", "---|---", "-------", "---|---", "---|---", "---|---"),
+    );
+    // Anchored at every pipe in the column, since any of them could be the
+    // one that moved.
+    expect(codes(parse)).toEqual(Array.from({ length: 5 }, () => "misaligned-measure-break"));
+    expect(at(parse.diagnostics, 0)).toMatchObject({ line: 0, column: 3, length: 1 });
+  });
+
+  it("a row of nothing but measure breaks is legal", () => {
+    const parse = parseTablature(sixLines(...Array.from({ length: 6 }, () => "-|-|-")));
+    expect(codes(parse)).toEqual([]);
+    expect(row(parse, 0).slots.map((slot) => slot.kind)).toEqual(["break", "break"]);
   });
 
   it("overlapping-cells rejects a cell straddling two slots", () => {

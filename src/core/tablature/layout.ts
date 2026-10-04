@@ -68,11 +68,13 @@ export interface TablatureScene {
 
 /** One slot's measured geometry, plus each of its cells' own width. */
 interface SlotMetrics {
-  /** Slot left edge, `X(n)`. Every cell in the slot starts here. */
+  /** Slot left edge. Every cell in the slot starts here. */
   x: number;
-  /** `W(n)`: the widest cell in the slot. */
+  /** The widest cell in the slot. Zero for a measure break. */
   width: number;
+  /** Empty for a measure break, which holds no cells. */
   cells: { cell: Cell; width: number }[];
+  isBreak: boolean;
 }
 
 /**
@@ -125,23 +127,40 @@ function layoutRow(
   const stringY = (index: number): number => padY + index * stringGap;
   const height = 2 * padY + (strings - 1) * stringGap;
 
+  // The row is bracketed by measure breaks, drawn whether or not the source
+  // wrote them. The opening one sits where the string lines begin.
+  const openX = labelColumn;
+
   // Slot positions accumulate: a slot advances by its widest cell plus
   // `noteGap`, so the whitespace between every cell and the next slot is
   // exactly `noteGap` no matter how wide the cells are. `x = n * noteGap`
   // breaks on TC-3 and TC-7, where one slot is far wider than another.
+  // A measure break has no cells, so it advances by `noteGap` alone -- which is
+  // what gives it a full gap on each side.
   const slots: SlotMetrics[] = [];
-  let x = labelColumn + noteGap / 2;
+  let x = openX + noteGap;
   for (const slot of group.slots) {
-    const cells = slot.cells.map((cell) => ({ cell, width: measure(cell.characters, fontSize) }));
+    const cells =
+      slot.kind === "notes"
+        ? slot.cells.map((cell) => ({ cell, width: measure(cell.characters, fontSize) }))
+        : [];
     const width = cells.reduce((widest, entry) => Math.max(widest, entry.width), 0);
-    slots.push({ x, width, cells });
+    slots.push({ x, width, cells, isBreak: slot.kind === "break" });
     x += width + noteGap;
   }
 
   const last = slots.at(-1);
-  // A row with no slots is `empty-row-group`, which blocks the render; this just
-  // keeps layout from reading a last slot that isn't there.
-  const width = last ? last.x + last.width + noteGap / 2 : labelColumn;
+  // A row with no slots at all is `empty-row-group`, which blocks the render;
+  // this just keeps layout from reading a last slot that isn't there.
+  const closeX = last ? last.x + last.width + noteGap : openX + noteGap;
+
+  // A full stroke past the closing break, not half of one. Half is what the
+  // break's ink actually occupies, but that puts its outer edge exactly on the
+  // frame's clip boundary, where it gets cut; a whole weight leaves the ink
+  // strictly inside. Same argument `padY` makes vertically, where `clearance`
+  // plays the part of the slack. The left edge needs no allowance: `openX` is
+  // the label column's width, always wider than the heaviest stroke.
+  const width = closeX + strokeWeight;
 
   const items: SceneItem[] = [];
 
@@ -165,20 +184,52 @@ function layoutRow(
     items.push({
       kind: "line",
       name: `String ${String(index)}`,
-      x1: labelColumn,
+      x1: openX,
       y1: stringY(index),
-      x2: width,
+      x2: closeX,
       y2: stringY(index),
       strokeWeight,
       stroke: inkColor,
     });
   }
 
+  // Vertical, joining the top string's line to the bottom's. Grouped with the
+  // structural lines rather than the text: a break holds no cells, so no
+  // knockout ever covers one. Numbered among breaks, including the two the row
+  // adds itself, so the names read 0, 1, 2 rather than skipping slot indices.
+  //
+  // Each one overshoots the outermost string lines by half a stroke. Ending it
+  // on `stringY(0)` would end it at the *centre* of the top string's stroke,
+  // leaving the outer half of that stroke's thickness uninked where the two
+  // meet -- a notch at the row's top corners. Overshooting covers exactly that
+  // half, and is invisible on an interior break, which simply runs half a
+  // stroke past the outer strings inside `padY`'s slack.
+  const overshoot = strokeWeight / 2;
+  const breakXs = [openX, ...slots.filter((slot) => slot.isBreak).map((slot) => slot.x), closeX];
+  breakXs.forEach((breakX, index) => {
+    items.push({
+      kind: "line",
+      name: `Measure Break ${String(index)}`,
+      x1: breakX,
+      y1: stringY(0) - overshoot,
+      x2: breakX,
+      y2: stringY(strings - 1) + overshoot,
+      strokeWeight,
+      stroke: inkColor,
+    });
+  });
+
   // Only as tall as the line it hides, not as tall as the text: 5px at the
   // defaults rather than 12. Sized from the cell's own width, not the slot's,
   // so a narrow cell in a wide slot hides only itself.
+  //
+  // Note slots are numbered among themselves, so a measure break between two of
+  // them doesn't advance the slot number: a layer name should read the way a
+  // player counts notes, not the way the array is indexed.
+  const noteSlots = slots.filter((slot) => !slot.isBreak);
+
   const knockoutHeight = strokeWeight + 2 * clearance;
-  slots.forEach((slot, n) => {
+  noteSlots.forEach((slot, n) => {
     for (const { cell, width: cellWidth } of slot.cells) {
       items.push({
         kind: "rect",
@@ -195,7 +246,7 @@ function layoutRow(
   // Left-aligned at the slot's edge: every cell of one chord begins in the same
   // character column in the source, and centring would stagger them whenever a
   // slot mixes widths.
-  slots.forEach((slot, n) => {
+  noteSlots.forEach((slot, n) => {
     for (const { cell } of slot.cells) {
       items.push({
         kind: "text",

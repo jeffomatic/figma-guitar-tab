@@ -125,15 +125,17 @@ Those are resolved by clamping inside core, not by a diagnostic — a setting th
 - **Node creation auto-appends to `figma.currentPage`.** So move a new node into its frame with `FrameNode.appendChild` and never reach for `PageNode.appendChild`, which is one of the restricted members above.
 - **Resolve the font once per render** and use it for measurement *and* drawing.
   Measuring in Roboto Mono while drawing in the Roboto fallback computes every width from a font that isn't on screen, and nothing fails, because `src/plugin/` has no tests.
-- A `LineNode` has zero height and is drawn along its own x axis: `resize(length, 0)`.
-  A vertical line needs a rotation, which the fretboard's fret boundaries will want at M7.
+- **Don't use `LineNode`. Draw every line as a rectangle of the stroke's thickness.**
+  A `LineNode`'s ink does not sit where its geometry says. A rotated one draws off along its length — measured: a transform placing a line at `y` 7.5 for 81 px drew half a stroke low at both ends while the inspector reported exactly that geometry — and a horizontal one does not straddle its `y` either, which left every string line half a stroke clear of where the formulas put it and every corner with a notch.
+  A rectangle's ink fills exactly `[x, x+width] x [y, y+height]`, so a line of thickness `w` centred on a coordinate is a rect offset by `w / 2`. Two lines that meet then meet squarely, because both are placed from the same centre line by the same half-thickness.
+  Scene lines are axis-aligned in both modes and the renderer rejects anything else. Which node draws one is the renderer's business: a scene `line` item is two endpoints and a thickness.
 - `layoutSizingHorizontal` / `layoutSizingVertical` only mean anything once a node is already a child of an auto-layout frame.
   Append first, then size, or the parent hugs the child instead of honouring its computed extent.
 - `figma.loadFontAsync` MUST resolve before any text node is created or any `characters` assignment.
   Load once per render, not per node.
 - Set `lineHeight` to `fontSize` and `textAutoResize` to `WIDTH_AND_HEIGHT` on every text node.
   Figma's default auto line height is a font metric, so leaving it alone makes node heights unpredictable and the spec's vertical formulas wrong.
-- Node z-order is creation order within a parent, so the renderer appends scene items in the order the spec lists them: labels, lines, knockouts, text.
+- Node z-order is creation order within a parent, so the renderer appends scene items in the order the spec lists them: labels, string lines, measure breaks, knockouts, text.
   A knockout rectangle created before its string line would be hidden by it.
 - Plugin data values are strings only.
   Everything structured is JSON.
