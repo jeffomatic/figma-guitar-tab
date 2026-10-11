@@ -31,7 +31,7 @@ Build in this order; each one is independently verifiable.
 | M5 | Persistence and re-edit | Plugin data written and read; all three `SelectionState` cases, including refusing a newer `schemaVersion` and disabling render while such a frame is selected; the editor clobbered by an editable selection and left alone otherwise; render target following the selection; relaunch button via `setRelaunchData` plus its manifest entry; `clientStorage` defaults written while handling `render`; `figma.notify` for outcomes outside the iframe | done |
 | M5a | Tablature string gaps | String lines are cut into segments around each note cell, as [String lines and gaps](docs/spec.md#string-lines-and-gaps) describes, and the knockout rectangles are gone from tablature scenes. Each gap is the horizontal span its knockout covered — the cell's own measured width plus `clearance` on each side — so the visual spacing is unchanged. Overlapping or touching gaps merge, and a zero-length segment is never emitted. TC-1, TC-5, TC-8 and TC-9 assert segments instead of rectangles, and the z-order test drops knockouts | done |
 | M6 | Fretboard parser and layout | Parse results and geometry for every fretboard test case, the fret-window worked examples including the clamps at both ends, and every fretboard diagnostic | done |
-| M7 | Fretboard renderer and UI tab | Widens `Diagram`, `Defaults` and `Mode` in `src/core/protocol.ts` to both modes, which M4 left tablature-only. The Fretboard tab renders: nut versus ordinary boundary, dots, open discs with their knockout fill, fret labels carrying absolute fret numbers, string labels. Mode switching, and per-mode last-used settings | not started |
+| M7 | Fretboard renderer and UI tab | Widens `Diagram`, `Defaults` and `Mode` in `src/core/protocol.ts` to both modes, which M4 left tablature-only. The Fretboard tab renders: nut versus ordinary boundary, dots, open discs with their knockout fill, fret labels carrying absolute fret numbers, string labels. Mode switching, and per-mode last-used settings | done |
 
 Two notes on the shape of this list:
 
@@ -58,6 +58,14 @@ What it leaves for later milestones:
 - The UI still parses tablature only, and `protocol.ts`, `pluginData.ts` and `clientStorage` know only tablature settings. `FretboardSettings` and its clamp are in `src/core/settings.ts`, ready to be paired with `"fretboard"` in `Diagram`.
 - `leadingFrets` and `trailingFrets` are whole numbers: the fretboard clamp rounds a fraction and warns, so their number inputs should use `step` 1, as `fretboardRanges` says.
 
+**What M7 settled.**
+
+- The render target follows the selection across modes too: rendering from the other UI tab converts the selected frame, keeping its id, name and position.
+  `renderFretboard` switches auto-layout off for that reason.
+- Each UI tab keeps its own source and settings for the session; the plugin always opens on Tab unless an editable frame is selected.
+- Both halves check a diagram through `checkDiagram` in `src/core/diagram.ts`, so neither dispatches on the mode on its own.
+- The schema version stays 1: the fretboard is a new value for the existing `mode` key.
+
 There is no "polish" milestone.
 Settings clamping belongs to M2, where settings first arrive, and selection-change behavior to M5, where selection is first read; a milestone that collects them later would just be a license for the earlier ones to ship unfinished.
 
@@ -73,8 +81,9 @@ Renaming one means updating its marker.
 | `src/core/fretboard/parse.ts` | Fretboard parse result: per-string markers and labels | M6 |
 | `src/core/settings.ts` | Defaults, ranges, clamping, serialization for both modes | M2, extended M6 |
 | `src/core/measure.ts` | The `measure` signature and core's analytic monospace implementation | M2 |
-| `src/core/protocol.ts` | `UiMessage`, `SandboxMessage`, `Diagram`, `SelectionState` | M4 |
-| `src/core/pluginData.ts` | Encoding and decoding a stored diagram; version policy | M5 |
+| `src/core/protocol.ts` | `UiMessage`, `SandboxMessage`, `Diagram`, `SelectionState` | M4, extended M7 |
+| `src/core/pluginData.ts` | Encoding and decoding a stored diagram; version policy | M5, extended M7 |
+| `src/core/diagram.ts` | Checking a diagram of either mode: its parser and settings clamp | M7 |
 | `src/core/tablature/layout.ts` | Tablature scene geometry | M2 |
 | `src/core/scene.ts` | Scene item types shared by both modes' layouts | M6 |
 | `src/core/fretboard/layout.ts` | Fretboard scene geometry, including the window computation | M6 |

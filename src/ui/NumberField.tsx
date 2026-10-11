@@ -1,21 +1,23 @@
-import { tablatureLabels, tablatureRanges, type TablatureSettings } from "../core/settings";
+import type { SettingRange } from "../core/settings";
 
 interface Props {
-  name: keyof TablatureSettings;
+  label: string;
+  range: SettingRange;
   value: number;
   onChange: (value: number) => void;
 }
 
 /**
- * The range comes from the settings module, not from here. The attributes keep
- * the normal path clean; core clamps anyway, which covers a bug in this file.
+ * The range and label come from the settings module, not from here. The
+ * attributes keep the normal path clean; core clamps anyway, which covers a bug
+ * in this file.
  */
-export function NumberField({ name, value, onChange }: Props) {
-  const { min, max, step } = tablatureRanges[name];
+export function NumberField({ label, range, value, onChange }: Props) {
+  const { min, max, step } = range;
 
   return (
     <label className="flex items-center justify-between gap-3">
-      <span className="text-neutral-600">{tablatureLabels[name]}</span>
+      <span className="text-neutral-600">{label}</span>
       <input
         type="number"
         min={min}

@@ -4,21 +4,23 @@
 // document write and `clientStorage` is written after the last one, so the whole
 // render lands in one undo step -- an await between two writes would split it.
 
+import { checkDiagram, hasErrors } from "../core/diagram";
+import { layoutFretboard } from "../core/fretboard/layout";
 import {
   asUiMessage,
   type Diagram,
+  type Mode,
   type RenderTarget,
   type SandboxMessage,
 } from "../core/protocol";
-import { clampTablatureSettings, fillTablatureSettings } from "../core/settings";
+import { fillFretboardSettings, fillTablatureSettings } from "../core/settings";
 import { layoutTablature } from "../core/tablature/layout";
-import { parseTablature } from "../core/tablature/parse";
 import { resolveFont } from "./font";
 import { createMeasurer } from "./measure";
 import { isRenderable, resolveSelection, writeFrame } from "./pluginData";
-import { renderTablature } from "./render";
+import { renderFretboard, renderTablature } from "./render";
 
-const defaultsKey = "defaults:tablature";
+const defaultsKey = (mode: Mode): string => `defaults:${mode}`;
 
 figma.showUI(__html__, { width: 420, height: 620 });
 
@@ -39,17 +41,13 @@ async function render(diagram: Diagram, target: RenderTarget): Promise<void> {
   // Re-validated here rather than trusting the UI, with the same parser and the
   // same clamp the UI used. Both halves import one module, so they cannot
   // disagree -- and if this fires, the UI failed to predict it, which is a bug.
-  const parse = parseTablature(diagram.source);
-  const { settings, diagnostics } = clampTablatureSettings(diagram.settings);
-  const errors = [...parse.diagnostics, ...diagnostics].filter(
-    (error) => error.severity === "error",
-  );
-
-  if (errors.length > 0) {
+  const checked = checkDiagram(diagram);
+  if (hasErrors(checked.diagnostics)) {
     reply({
       type: "render-failed",
-      message: "This tab can't be rendered, and the editor should have caught it. That's a bug.",
-      errors,
+      message:
+        "This diagram can't be rendered, and the editor should have caught it. That's a bug.",
+      errors: checked.diagnostics.filter((error) => error.severity === "error"),
     });
     return;
   }
@@ -80,14 +78,23 @@ async function render(diagram: Diagram, target: RenderTarget): Promise<void> {
   // --- No awaits past this point until the writes are done.
   const { measure, dispose } = createMeasurer(font);
   try {
-    const scene = layoutTablature(parse, settings, measure);
-    const frame = renderTablature(scene, font, existing ?? undefined);
+    const into = existing ?? undefined;
+    // An existing frame may be of the other mode. It is converted: the render
+    // target follows the selection, whatever mode the frame was drawn in.
+    const frame =
+      checked.mode === "tablature"
+        ? renderTablature(layoutTablature(checked.parse, checked.settings, measure), font, into)
+        : renderFretboard(layoutFretboard(checked.parse, checked.settings, measure), font, into);
 
     // A re-render preserves the frame's position; only a new frame is placed.
     // Positioned last either way, since the frame hugs its rows.
     if (!existing) placeAtDefaultLocation(frame);
 
-    writeFrame(frame, { mode: "tablature", settings, source: diagram.source });
+    const stored: Diagram =
+      checked.mode === "tablature"
+        ? { mode: "tablature", settings: checked.settings, source: diagram.source }
+        : { mode: "fretboard", settings: checked.settings, source: diagram.source };
+    writeFrame(frame, stored);
     figma.currentPage.selection = [frame];
 
     figma.notify(existing ? "Updated the diagram." : "Rendered a new diagram.");
@@ -98,7 +105,8 @@ async function render(diagram: Diagram, target: RenderTarget): Promise<void> {
 
   // After the writes, never between them. A render is the only moment the user
   // expresses a preference, which is why there is no separate save message.
-  await figma.clientStorage.setAsync(defaultsKey, settings);
+  // Only this mode's key: the other mode's preference wasn't expressed.
+  await figma.clientStorage.setAsync(defaultsKey(checked.mode), checked.settings);
 }
 
 function pushSelection(): void {
@@ -116,7 +124,8 @@ async function handle(data: unknown): Promise<void> {
   switch (message.type) {
     case "ui-ready": {
       uiReady = true;
-      const stored: unknown = await figma.clientStorage.getAsync(defaultsKey);
+      const tablature: unknown = await figma.clientStorage.getAsync(defaultsKey("tablature"));
+      const fretboard: unknown = await figma.clientStorage.getAsync(defaultsKey("fretboard"));
       const { state, notify } = resolveSelection();
 
       reply({
@@ -126,7 +135,10 @@ async function handle(data: unknown): Promise<void> {
         command: figma.command === "edit" && state.kind === "editable" ? "edit" : "run",
         // clientStorage hands back `any`, so it goes through the same per-key
         // filtering as stored plugin data.
-        defaults: { tablature: fillTablatureSettings(stored) },
+        defaults: {
+          tablature: fillTablatureSettings(tablature),
+          fretboard: fillFretboardSettings(fretboard),
+        },
         selection: state,
       });
       if (notify !== null) figma.notify(notify);

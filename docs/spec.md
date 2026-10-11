@@ -554,21 +554,12 @@ Boundary `0` is the **nut** when `lo = 1`.
 
 #### Node tree
 
-*Illustrative after M7. Authoritative: the fretboard renderer in `src/plugin/`.*
+The tree is built by `renderFretboard` in `src/plugin/render.ts`, from the scene's items in order: a single parent frame carrying the plugin data, holding the string labels, fret boundaries, string lines, dots, open discs and fret labels directly, with no row frames.
 
-```
-Frame  "Fretboard Diagram"          ← parent frame; carries the plugin data
-├─ Text     "Label e"               ← one per string, top to bottom, always present
-├─ …                                  (from the source, or the default tuning)
-├─ Line     "Nut"                   ← boundary 0 when lo = 1; otherwise "Fret Boundary 0"
-├─ Line     "Fret Boundary 1"
-├─ …
-├─ Line     "String 0"              ← one per string, top to bottom
-├─ …
-├─ Ellipse  "Dot String 3 Fret 2"   ← filled disc, one per fretted note
-├─ Ellipse  "Open String 2"         ← stroked disc superimposed on the nut
-└─ Text     "Fret Label 2"          ← one per drawn fret; the fret number, not an index
-```
+- The parent frame has no auto-layout, no padding and no fill, and is resized to the scene's extent.
+  Re-rendering a frame that was tablature switches its auto-layout off, since the render target follows the selection whatever mode the frame was.
+- Layer names follow tablature's rule: indices are 0-based, and a fret label is named for its absolute fret number.
+- Dots and open discs are ellipses whose stroke, when they have one, sits inside the disc, so a disc's ink is exactly `dotDiameter` across.
 
 #### Coordinates
 
@@ -756,6 +747,7 @@ No other node carries plugin data.
 
 5. The render target follows the selection: `existing` with that frame's id while an `editable` frame is selected, and `new` while the selection is `none`.
    So editing a frame, then deselecting it, then rendering creates a second frame with the same content — a render always acts on what is selected now.
+   The same holds across modes: rendering from the other mode's UI tab while a frame is selected converts that frame to the active mode.
 
    While an `unsupported-version` frame is selected, **rendering is unavailable** and the render button is disabled.
    The alternative — letting the render fall through to a `new` frame — would answer "I can't edit this one" by silently producing a different diagram somewhere else.
@@ -794,15 +786,13 @@ Settings validation works the same way.
 **Layout is the sandbox's job alone.** The UI never runs layout, never measures text and never precomputes geometry, so there is nothing for the two halves to disagree about.
 Diagnostics are measurement-independent, which is why the UI can predict every `render-failed` without knowing a thing about font metrics.
 
-*Authoritative: `src/core/protocol.ts`, which holds the message union, `Diagram`, `Defaults` and `SelectionState`. Those are tablature-only until M7 widens them to both modes. The rules below are normative.*
+*Authoritative: `src/core/protocol.ts`, which holds the message union, `Diagram`, `Defaults` and `SelectionState`. The rules below are normative.*
 
 UI to sandbox: `ui-ready`, sent once when the React tree mounts; `render`, carrying a `Diagram` and a target that is either a new frame or an existing frame's id; and `close`.
 
 Sandbox to UI: `init`, the reply to `ui-ready`, carrying how the plugin was launched, the per-user defaults and the current selection; `selection`, pushed on every selection change; and `render-done` or `render-failed`, the latter carrying a user-facing message and the offending diagnostics.
 
 `SelectionState` is one of three cases — nothing editable selected, a recognized generated frame, or a generated frame whose `schemaVersion` is newer than this plugin supports — and what each means for the UI is described in [In-place edit flow](#in-place-edit-flow).
-
-Still ahead: M7 pairs each mode with its own settings type in `Diagram`, `TablatureSettings` with `"tablature"` and `FretboardSettings` with `"fretboard"`, so the two can never mismatch.
 
 Rules:
 

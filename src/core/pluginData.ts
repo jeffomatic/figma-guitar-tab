@@ -5,7 +5,7 @@
 // unusable.
 
 import type { Diagram } from "./protocol";
-import { fillTablatureSettings } from "./settings";
+import { fillFretboardSettings, fillTablatureSettings } from "./settings";
 
 export const currentSchemaVersion = 1;
 
@@ -45,8 +45,7 @@ export function decode(raw: Record<string, string>): Decoded {
   // is unreachable until a version 2 exists. An empty registry now would be
   // machinery with nothing to do.
 
-  // "fretboard" frames cannot exist until M7 renders them.
-  if (mode !== "tablature") return { kind: "unrecognized" };
+  if (mode !== "tablature" && mode !== "fretboard") return { kind: "unrecognized" };
 
   // `getPluginData` returns "" for a key that was never set, and a rendered
   // frame can never hold an empty source -- `empty-source` is an error, so the
@@ -64,8 +63,9 @@ export function decode(raw: Record<string, string>): Decoded {
     settings = {};
   }
 
-  return {
-    kind: "editable",
-    diagram: { mode: "tablature", source, settings: fillTablatureSettings(settings) },
-  };
+  const diagram: Diagram =
+    mode === "tablature"
+      ? { mode, source, settings: fillTablatureSettings(settings) }
+      : { mode, source, settings: fillFretboardSettings(settings) };
+  return { kind: "editable", diagram };
 }

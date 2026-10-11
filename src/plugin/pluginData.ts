@@ -61,7 +61,7 @@ export function resolveSelection(): ResolvedSelection {
     case "unreadable":
       return {
         state: { kind: "none" },
-        notify: "This frame was made by Guitar Tab, but its saved tab can't be read.",
+        notify: "This frame was made by Guitar Tab, but its saved diagram can't be read.",
       };
     case "unrecognized":
       return { state: { kind: "none" }, notify: null };

@@ -5,7 +5,9 @@
 // and a line's length. If something in here starts wanting a test, it belongs
 // in `src/core/` instead.
 
-import type { RowScene, SceneItem, TablatureScene } from "../core/tablature/layout";
+import type { FretboardScene } from "../core/fretboard/layout";
+import type { DiscItem, LineItem, RectItem, TextItem } from "../core/scene";
+import type { RowScene, TablatureScene } from "../core/tablature/layout";
 import { applyTextStyle } from "./font";
 
 /** Figma wants channels in 0-1; the scene carries `#RRGGBB`. */
@@ -19,6 +21,9 @@ function hexToRgb(hex: string): RGB {
 }
 
 const solid = (hex: string): SolidPaint => ({ type: "SOLID", color: hexToRgb(hex) });
+
+/** Every kind either mode's layout emits. */
+type SceneItem = LineItem | RectItem | TextItem | DiscItem;
 
 /**
  * Create one node from one scene item.
@@ -81,6 +86,25 @@ function createItem(item: SceneItem, font: FontName): SceneNode {
       return rect;
     }
 
+    case "disc": {
+      const ellipse = figma.createEllipse();
+      ellipse.name = item.name;
+      ellipse.resize(item.diameter, item.diameter);
+      ellipse.x = item.x;
+      ellipse.y = item.y;
+      ellipse.fills = item.fill === null ? [] : [solid(item.fill)];
+      if (item.stroke === null) {
+        ellipse.strokes = [];
+      } else {
+        ellipse.strokes = [solid(item.stroke)];
+        ellipse.strokeWeight = item.strokeWeight;
+        // Inside, so the ink is exactly `diameter` across: a centred stroke
+        // would spill half its weight past the box layout placed.
+        ellipse.strokeAlign = "INSIDE";
+      }
+      return ellipse;
+    }
+
     case "text": {
       const text = figma.createText();
       text.name = item.name;
@@ -119,31 +143,38 @@ function createRow(row: RowScene, parent: FrameNode, font: FontName): FrameNode 
 }
 
 /**
- * Build the whole diagram. Returns the parent frame, unpositioned.
+ * The frame a diagram is drawn into, emptied.
  *
  * With `into`, re-renders that frame in place: every child is discarded and
  * rebuilt from the scene, and nothing inspects the old subtree first. Its
  * **name is deliberately left alone** -- a re-rendered frame keeps its id,
  * name, position and parent, so the diagram holds its place in the document.
+ * Both modes come through here so neither can get that wrong on its own.
  */
-export function renderTablature(
-  scene: TablatureScene,
-  font: FontName,
-  into?: FrameNode,
-): FrameNode {
+function prepareFrame(name: string, into: FrameNode | undefined): FrameNode {
   const parent = into ?? figma.createFrame();
-  if (!into) parent.name = scene.name;
+  if (!into) parent.name = name;
 
   for (const child of [...parent.children]) child.remove();
 
   parent.fills = [];
   parent.clipsContent = true;
-  parent.layoutMode = "VERTICAL";
-  parent.itemSpacing = scene.rowGap;
   parent.paddingTop = 0;
   parent.paddingBottom = 0;
   parent.paddingLeft = 0;
   parent.paddingRight = 0;
+  return parent;
+}
+
+/** Build a tablature diagram. Returns the parent frame, unpositioned. */
+export function renderTablature(
+  scene: TablatureScene,
+  font: FontName,
+  into?: FrameNode,
+): FrameNode {
+  const parent = prepareFrame(scene.name, into);
+  parent.layoutMode = "VERTICAL";
+  parent.itemSpacing = scene.rowGap;
 
   for (const row of scene.rows) {
     createRow(row, parent, font);
@@ -152,6 +183,29 @@ export function renderTablature(
   // Hug last, so the frame takes its size from the rows it now holds.
   parent.layoutSizingHorizontal = "HUG";
   parent.layoutSizingVertical = "HUG";
+
+  return parent;
+}
+
+/**
+ * Build a fretboard diagram. Returns the parent frame, unpositioned.
+ *
+ * One frame, no rows, every item absolutely positioned. `into` may have been a
+ * tablature frame, so auto-layout is switched off explicitly rather than
+ * assumed absent.
+ */
+export function renderFretboard(
+  scene: FretboardScene,
+  font: FontName,
+  into?: FrameNode,
+): FrameNode {
+  const parent = prepareFrame(scene.name, into);
+  parent.layoutMode = "NONE";
+  parent.resize(scene.width, scene.height);
+
+  for (const item of scene.items) {
+    parent.appendChild(createItem(item, font));
+  }
 
   return parent;
 }
