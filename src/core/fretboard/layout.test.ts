@@ -14,7 +14,7 @@ import {
   stringLabelGap,
   type FretboardSettings,
 } from "../settings";
-import { TCF1, TCF2, TCF3, TCF4 } from "./fixtures";
+import { TCF1, TCF2, TCF3, TCF4, TCF5 } from "./fixtures";
 import { fretWindow, layoutFretboard, type FretboardItem, type FretboardScene } from "./layout";
 import { parseFretboard } from "./parse";
 
@@ -38,6 +38,8 @@ const boundaries = (s: FretboardScene) =>
 const stringLines = (s: FretboardScene) => prefixed(s, "line", "String ");
 const dots = (s: FretboardScene) => prefixed(s, "disc", "Dot ");
 const opens = (s: FretboardScene) => prefixed(s, "disc", "Open String ");
+const muted = (s: FretboardScene) => prefixed(s, "disc", "Muted String ");
+const mutedStrokes = (s: FretboardScene) => prefixed(s, "line", "Muted String ");
 const stringLabels = (s: FretboardScene) => prefixed(s, "text", "Label ");
 const fretLabels = (s: FretboardScene) => prefixed(s, "text", "Fret Label ");
 
@@ -285,6 +287,72 @@ describe("fretboard layout", () => {
     }
   });
 
+  describe("TC-F5 muted strings", () => {
+    const s = scene(TCF5);
+
+    it("the window is TC-F2's: the 0 reaches the nut, not the x", () => {
+      expect(boundaries(s)[0]?.name).toBe("Nut");
+      expect(fretLabels(s).map((t) => t.characters)).toEqual(["1", "2", "3", "4"]);
+    });
+
+    it("a white disc with no outline on the nut, for each muted string", () => {
+      expect(muted(s).map((d) => d.name)).toEqual(["Muted String 4", "Muted String 5"]);
+      for (const disc of muted(s)) {
+        expect(centerX(disc)).toBe(px(labelColumn));
+        expect(disc.diameter).toBe(dotDiameter);
+        expect(disc.fill).toBe(knockoutFill);
+        expect(disc.stroke).toBeNull();
+      }
+      expect(muted(s).map(centerY)).toEqual([padY + 4 * stringGap, padY + 5 * stringGap]);
+    });
+
+    it("two diagonal strokes per muted string, crossing at the disc's centre", () => {
+      for (const disc of muted(s)) {
+        const strokes = mutedStrokes(s).filter((l) => l.name.startsWith(`${disc.name} `));
+        expect(strokes.map((l) => l.name)).toEqual([
+          `${disc.name} Stroke 0`,
+          `${disc.name} Stroke 1`,
+        ]);
+        for (const line of strokes) {
+          expect(px((line.x1 + line.x2) / 2)).toBe(centerX(disc));
+          expect(px((line.y1 + line.y2) / 2)).toBe(centerY(disc));
+          // 45 degrees, one each way.
+          expect(px(Math.abs(line.x2 - line.x1))).toBe(px(Math.abs(line.y2 - line.y1)));
+          expect(line.strokeWeight).toBe(strokeWeight);
+          expect(line.stroke).toBe(inkColor);
+        }
+        const [a, b] = strokes;
+        expect(a && b && Math.sign(a.y2 - a.y1)).toBe(b && -Math.sign(b.y2 - b.y1));
+      }
+    });
+
+    it("each stroke's ink, square ends included, stays inside its disc", () => {
+      for (const weight of [0.25, 1, 4, 8]) {
+        const t = scene(TCF5, { strokeWeight: weight });
+        const disc = muted(t)[0];
+        const line = mutedStrokes(t)[0];
+        if (!disc || !line) throw new Error("missing muted marker");
+        const halfLength = Math.hypot(line.x2 - line.x1, line.y2 - line.y1) / 2;
+        const corner = Math.hypot(halfLength, weight / 2);
+        expect(corner).toBeLessThanOrEqual(disc.diameter / 2 + 1e-9);
+      }
+    });
+
+    it("a muted string adds no dot and no open disc", () => {
+      expect(dots(s)).toHaveLength(3);
+      expect(opens(s).map((d) => d.name)).toEqual(["Open String 3"]);
+    });
+  });
+
+  it("a muted string doesn't pull a high shape's window down to the nut", () => {
+    const high = scene(["x", "7", "7", "7", "9", "7"].join("\n"));
+    expect(high.items.some((i) => i.name === "Nut")).toBe(false);
+    expect(fretLabels(high)[0]?.characters).toBe("6");
+    // It sits on boundary 0, which is an ordinary fret line here.
+    const disc = muted(high)[0];
+    expect(disc && centerX(disc)).toBe(px((named(high, "Fret Boundary 0") as ItemOf<"line">).x1));
+  });
+
   it("an open disc stays inside the frame on the left", () => {
     for (const open of opens(scene(TCF2))) expect(open.x).toBeGreaterThan(0);
   });
@@ -296,11 +364,12 @@ describe("fretboard layout", () => {
       if (item.name.startsWith("String ")) return 2;
       if (item.name.startsWith("Dot ")) return 3;
       if (item.name.startsWith("Open String ")) return 4;
-      return 5;
+      if (item.name.startsWith("Muted String ")) return 5;
+      return 6;
     };
-    const order = scene(TCF2).items.map(group);
+    const order = scene(TCF5).items.map(group);
     expect(order).toEqual([...order].sort((a, b) => a - b));
-    expect(new Set(order)).toEqual(new Set([0, 1, 2, 3, 4, 5]));
+    expect(new Set(order)).toEqual(new Set([0, 1, 2, 3, 4, 5, 6]));
   });
 
   it("every dot is centred in its own fret's gap", () => {

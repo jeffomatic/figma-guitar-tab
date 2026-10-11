@@ -66,6 +66,12 @@ What it leaves for later milestones:
 - Both halves check a diagram through `checkDiagram` in `src/core/diagram.ts`, so neither dispatches on the mode on its own.
 - The schema version stays 1: the fretboard is a new value for the existing `mode` key.
 
+**Muted fretboard strings landed out of band, after M7.** An `x` or `X` token mutes a string, drawn as an X on an unoutlined `knockoutFill` disc at boundary 0, which the spec's *Not in v1* had previously deferred.
+Like measure breaks it is not a milestone, but two things it leaves behind matter:
+
+- Scene lines are no longer all axis-aligned: the X's strokes are diagonal, and every line now goes through `lineBox` in `src/core/scene.ts`, which the renderer applies as a `relativeTransform`.
+- A muted marker does not force the window to the nut, unlike an open string, so it can sit on an ordinary `Fret Boundary 0`.
+
 There is no "polish" milestone.
 Settings clamping belongs to M2, where settings first arrive, and selection-change behavior to M5, where selection is first read; a milestone that collects them later would just be a license for the earlier ones to ship unfinished.
 
@@ -76,7 +82,7 @@ Renaming one means updating its marker.
 
 | Path | Holds | From |
 | --- | --- | --- |
-| `src/core/diagnostics.ts` | `Severity`, `ParseError`, and the union of diagnostic codes | M1, extended M6 |
+| `src/core/diagnostics.ts` | `Severity`, `ParseError`, and the union of diagnostic codes | M1, extended M6 and after M7 |
 | `src/core/tablature/parse.ts` | Tablature parse result: row groups, slots, cells, labels | M1 |
 | `src/core/fretboard/parse.ts` | Fretboard parse result: per-string markers and labels | M6 |
 | `src/core/settings.ts` | Defaults, ranges, clamping, serialization for both modes | M2, extended M6 |
@@ -85,6 +91,6 @@ Renaming one means updating its marker.
 | `src/core/pluginData.ts` | Encoding and decoding a stored diagram; version policy | M5, extended M7 |
 | `src/core/diagram.ts` | Checking a diagram of either mode: its parser and settings clamp | M7 |
 | `src/core/tablature/layout.ts` | Tablature scene geometry | M2 |
-| `src/core/scene.ts` | Scene item types shared by both modes' layouts | M6 |
+| `src/core/scene.ts` | Scene item types shared by both modes' layouts, and `lineBox` | M6, extended after M7 |
 | `src/core/fretboard/layout.ts` | Fretboard scene geometry, including the window computation | M6 |
 | `src/plugin/pluginData.ts` | Reading and writing plugin data, and schema migration | M5 |

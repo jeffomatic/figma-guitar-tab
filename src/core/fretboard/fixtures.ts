@@ -6,7 +6,8 @@
 // shape, and the copies must stay byte-identical either way.
 //
 // TC-F1 and TC-F2 use the two examples in the spec's ASCII input section, and
-// TC-F3 the example in Fretboard string labels; TC-F4 has its own block.
+// TC-F3 the example in Fretboard string labels; TC-F4 and TC-F5 have their own
+// blocks.
 
 /**
  * Strip the newline after the opening backtick and the one before the closing
@@ -52,4 +53,14 @@ export const TCF4 = source(`
 6 8 9
 6 7 9
 7 9
+`);
+
+/** TC-F5 — muted strings. An open D major chord, the two lowest strings muted. */
+export const TCF5 = source(`
+2
+3
+2
+0
+x
+x
 `);

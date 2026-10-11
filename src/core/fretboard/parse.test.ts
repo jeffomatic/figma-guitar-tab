@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { TCF1, TCF2, TCF3, TCF4 } from "./fixtures";
+import { TCF1, TCF2, TCF3, TCF4, TCF5 } from "./fixtures";
 import { parseFretboard, type FretboardParse } from "./parse";
 
 const codes = (parse: FretboardParse): string[] => parse.diagnostics.map((d) => d.code);
@@ -63,6 +63,44 @@ describe("fretboard structure", () => {
     expect(parse.strings.some((s) => s.open)).toBe(false);
   });
 
+  it("TC-F5 muted strings", () => {
+    const parse = parseFretboard(TCF5);
+    expect(codes(parse)).toEqual([]);
+    expect(parse.labels).toBeNull();
+    expect(parse.strings.map((s) => s.muted)).toEqual([false, false, false, false, true, true]);
+    expect(parse.strings.map((s) => s.open)).toEqual([false, false, false, true, false, false]);
+    expect(parse.strings.map((s) => s.frets)).toEqual([[2], [3], [2], [], [], []]);
+  });
+
+  it("a capital X mutes a string too", () => {
+    expect(parseFretboard(withTop("X")).strings).toEqual(parseFretboard(withTop("x")).strings);
+    expect(parseFretboard(withTop("X")).strings[0]?.muted).toBe(true);
+  });
+
+  it("a leading x is a muted marker, never a label", () => {
+    const parse = parseFretboard(lines("x", "3", "2", "0", "1", "0"));
+    expect(codes(parse)).toEqual([]);
+    expect(parse.labels).toBeNull();
+    expect(parse.strings[0]).toEqual({ open: false, muted: true, frets: [] });
+  });
+
+  it("a labeled string is muted after its label", () => {
+    const parse = parseFretboard(lines("e x", "B 3", "G 2", "D 0", "A 1", "E 0"));
+    expect(codes(parse)).toEqual([]);
+    expect(parse.labels).toEqual(["e", "B", "G", "D", "A", "E"]);
+    expect(parse.strings[0]?.muted).toBe(true);
+  });
+
+  it("other letters are still bad tokens", () => {
+    expect(codes(parseFretboard(withTop("3 y")))).toEqual(["bad-token"]);
+    expect(codes(parseFretboard(withTop("3 xx")))).toEqual(["bad-token"]);
+  });
+
+  it("muted strings alone are something to draw", () => {
+    const parse = parseFretboard(lines("x", "x", "x", "x", "x", "x"));
+    expect(codes(parse)).toEqual([]);
+  });
+
   it("tokens may appear in any order, and are sorted", () => {
     const parse = parseFretboard(withTop("5 2 3"));
     expect(parse.strings[0]?.frets).toEqual([2, 3, 5]);
@@ -86,8 +124,8 @@ describe("fretboard structure", () => {
   it("a blank line is a string with no marker", () => {
     const parse = parseFretboard(lines("3", "", "0", "", "2", "3"));
     expect(codes(parse)).toEqual([]);
-    expect(parse.strings[1]).toEqual({ open: false, frets: [] });
-    expect(parse.strings[3]).toEqual({ open: false, frets: [] });
+    expect(parse.strings[1]).toEqual({ open: false, muted: false, frets: [] });
+    expect(parse.strings[3]).toEqual({ open: false, muted: false, frets: [] });
   });
 
   it("trailing blank lines are trimmed", () => {
@@ -100,7 +138,7 @@ describe("fretboard structure", () => {
     const parse = parseFretboard(lines("e 3", "B", "G 0", "D 0", "A 2", "E 3"));
     expect(codes(parse)).toEqual([]);
     expect(parse.labels).toEqual(["e", "B", "G", "D", "A", "E"]);
-    expect(parse.strings[1]).toEqual({ open: false, frets: [] });
+    expect(parse.strings[1]).toEqual({ open: false, muted: false, frets: [] });
   });
 
   it("labels are read verbatim, any tuning", () => {
@@ -141,7 +179,7 @@ describe("fretboard diagnostics", () => {
   });
 
   it("bad-token for a non-fret token after the label", () => {
-    const parse = parseFretboard(lines("e 3 x", "B 3", "G 3", "D 3", "A 3", "E 3"));
+    const parse = parseFretboard(lines("e 3 y", "B 3", "G 3", "D 3", "A 3", "E 3"));
     expect(anchor(parse)).toMatchObject({ code: "bad-token", line: 0, column: 4, length: 1 });
   });
 
@@ -184,10 +222,35 @@ describe("fretboard diagnostics", () => {
     expect(parse.strings[0]?.frets).toEqual([3, 5]);
   });
 
+  it("muted-with-marker at the x, alongside a fret or a 0", () => {
+    for (const top of ["3 x", "x 3", "0 X"]) {
+      const parse = parseFretboard(withTop(top));
+      expect(codes(parse), top).toEqual(["muted-with-marker"]);
+      expect(anchor(parse)).toMatchObject({
+        severity: "error",
+        line: 0,
+        column: top.search(/[xX]/),
+        length: 1,
+      });
+    }
+  });
+
+  it("duplicate-marker for a repeated x, in either case", () => {
+    const parse = parseFretboard(withTop("x X"));
+    expect(anchor(parse)).toMatchObject({
+      code: "duplicate-marker",
+      severity: "warning",
+      line: 0,
+      column: 2,
+      length: 1,
+    });
+    expect(parse.strings[0]).toEqual({ open: false, muted: true, frets: [] });
+  });
+
   it("duplicate-marker for a repeated 0", () => {
     const parse = parseFretboard(withTop("0 0"));
     expect(codes(parse)).toEqual(["duplicate-marker"]);
-    expect(parse.strings[0]).toEqual({ open: true, frets: [] });
+    expect(parse.strings[0]).toEqual({ open: true, muted: false, frets: [] });
   });
 
   it("no-frets when no line carries any marker", () => {
@@ -208,7 +271,7 @@ describe("fretboard diagnostics", () => {
     expect(codes(parse)).toEqual(["leading-blank-line"]);
     expect(anchor(parse)).toMatchObject({ severity: "warning", line: 0 });
     expect(parse.stringCount).toBe(7);
-    expect(parse.strings[0]).toEqual({ open: false, frets: [] });
+    expect(parse.strings[0]).toEqual({ open: false, muted: false, frets: [] });
   });
 
   it("partial-labels at the first line that breaks the pattern", () => {
@@ -250,7 +313,7 @@ describe("fretboard diagnostics", () => {
   });
 
   it("diagnostics come back in source order", () => {
-    const parse = parseFretboard(lines("3 3", "x", "3", "3", "3", "3 31"));
+    const parse = parseFretboard(lines("3 3", "y", "3", "3", "3", "3 31"));
     expect(parse.diagnostics.map((d) => d.line)).toEqual([0, 1, 5]);
   });
 });

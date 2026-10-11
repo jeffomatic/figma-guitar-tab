@@ -30,6 +30,7 @@ export type TablatureCode =
 export type FretboardCode =
   | "bad-token"
   | "open-with-fret"
+  | "muted-with-marker"
   | "duplicate-marker"
   | "no-frets"
   | "leading-blank-line"

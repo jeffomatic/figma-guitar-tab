@@ -29,8 +29,8 @@ export interface FretboardScene {
   height: number;
   /**
    * In z-order: string labels, fret boundaries (the nut first, when drawn),
-   * string lines, dots, open discs, fret labels. An open disc drawn before the
-   * nut would be hidden by it.
+   * string lines, dots, open discs, muted markers (each a disc then its two
+   * strokes), fret labels. A marker drawn before the nut would be hidden by it.
    */
   items: FretboardItem[];
 }
@@ -200,6 +200,43 @@ export function layoutFretboard(
       stroke: inkColor,
       strokeWeight,
     });
+  });
+
+  // As long as each stroke can be while its square-ended ink stays inside the
+  // disc: the far corners of a stroke of half-length `arm` and half-width
+  // `strokeWeight / 2` lie exactly on the disc's edge.
+  const radius = dotDiameter / 2;
+  const arm = Math.sqrt(Math.max(0, radius ** 2 - (strokeWeight / 2) ** 2));
+  // Along each axis, since the strokes run at 45 degrees.
+  const reach = arm / Math.SQRT2;
+
+  strings.forEach((string, index) => {
+    if (!string.muted) return;
+    // On boundary 0 like an open disc, but without forcing the window to the
+    // nut: a muted string says nothing about frets. No outline, which is what
+    // tells it apart from an open string at a glance.
+    const cx = labelColumn;
+    const cy = stringY(index);
+    const name = `Muted String ${String(index)}`;
+    items.push({
+      kind: "disc",
+      name,
+      ...disc(cx, cy),
+      fill: knockoutFill,
+      stroke: null,
+      strokeWeight: 0,
+    });
+    const stroke = (n: number, dy: number): LineItem => ({
+      kind: "line",
+      name: `${name} Stroke ${String(n)}`,
+      x1: cx - reach,
+      y1: cy - dy,
+      x2: cx + reach,
+      y2: cy + dy,
+      strokeWeight,
+      stroke: inkColor,
+    });
+    items.push(stroke(0, reach), stroke(1, -reach));
   });
 
   for (let fret = lo; fret <= hi; fret++) {

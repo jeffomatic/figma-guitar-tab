@@ -128,7 +128,7 @@ Those are resolved by clamping inside core, not by a diagnostic — a setting th
 - **Don't use `LineNode`. Draw every line as a rectangle of the stroke's thickness.**
   A `LineNode`'s ink does not sit where its geometry says. A rotated one draws off along its length — measured: a transform placing a line at `y` 7.5 for 81 px drew half a stroke low at both ends while the inspector reported exactly that geometry — and a horizontal one does not straddle its `y` either, which left every string line half a stroke clear of where the formulas put it and every corner with a notch.
   A rectangle's ink fills exactly `[x, x+width] x [y, y+height]`, so a line of thickness `w` centred on a coordinate is a rect offset by `w / 2`. Two lines that meet then meet squarely, because both are placed from the same centre line by the same half-thickness.
-  Scene lines are axis-aligned in both modes and the renderer rejects anything else. Which node draws one is the renderer's business: a scene `line` item is two endpoints and a thickness.
+  A diagonal line, which only the fretboard's muted X uses, is the same rectangle rotated by an explicit `relativeTransform`; `lineBox` in `src/core/scene.ts` computes the size and transform for every line, so the renderer does no geometry. Which node draws one is the renderer's business: a scene `line` item is two endpoints and a thickness.
 - `layoutSizingHorizontal` / `layoutSizingVertical` only mean anything once a node is already a child of an auto-layout frame.
   Append first, then size, or the parent hugs the child instead of honouring its computed extent.
 - `figma.loadFontAsync` MUST resolve before any text node is created or any `characters` assignment.
@@ -139,7 +139,7 @@ Those are resolved by clamping inside core, not by a diagnostic — a setting th
 - **Leave the background alone: never hide ink by painting over it.**
   Tablature string lines stop short of each note cell instead of running behind it under a white rectangle, because Figma's canvas is grey and a design's frames are any colour.
   Where a line has to give way to something, layout cuts the line into segments; the renderer just draws them.
-  The fretboard's open disc is the one exception left, and the spec lists it as a v1 limit.
+  The fretboard's open and muted discs are the one exception left, and the spec lists it as a v1 limit.
 - Plugin data values are strings only.
   Everything structured is JSON.
 - `setRelaunchData` is a method on the node, and requires a matching `relaunchButtons` entry in `manifest.json`.

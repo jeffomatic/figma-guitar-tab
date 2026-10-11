@@ -13,9 +13,14 @@ import {
 } from "../diagnostics";
 import { maxFret, type StringCount } from "../settings";
 
-/** What one string carries. A string is open, fretted, or neither -- never both. */
+/**
+ * What one string carries. A string is open, fretted, muted, or none of them --
+ * never more than one.
+ */
 export interface FretboardString {
   open: boolean;
+  /** Marked `x` or `X`: don't play this string. */
+  muted: boolean;
   /** Ascending, without duplicates. Every value is in `1..maxFret`. */
   frets: number[];
 }
@@ -37,6 +42,9 @@ const SUPPORTED_STRING_COUNTS: readonly number[] = [4, 6, 7];
 
 /** `0`, or a positive integer with no leading zero. Nothing else is a fret. */
 const FRET_TOKEN = /^(0|[1-9][0-9]*)$/;
+
+/** Don't play this string. Either case, since both are common in chord charts. */
+const MUTED_TOKEN = /^[xX]$/;
 
 interface Token {
   text: string;
@@ -120,22 +128,44 @@ export function parseFretboard(source: string): FretboardParse {
     const tokens = tokenize(text);
 
     // Only the first token can be a label, and only when it can't be mistaken
-    // for a mistyped fret: a label never begins with a digit.
+    // for a mistyped fret -- a label never begins with a digit -- or for a
+    // muted marker, since no tuning is named x.
     const first = tokens[0];
-    const label = first !== undefined && !/^[0-9]/.test(first.text) ? first.text : null;
+    const label =
+      first !== undefined && !/^[0-9]/.test(first.text) && !MUTED_TOKEN.test(first.text)
+        ? first.text
+        : null;
     labels.push(label);
 
-    const string: FretboardString = { open: false, frets: [] };
+    const string: FretboardString = { open: false, muted: false, frets: [] };
     let openToken: Token | null = null;
+    let mutedToken: Token | null = null;
 
     for (const token of label === null ? tokens : tokens.slice(1)) {
       markers++;
+
+      if (MUTED_TOKEN.test(token.text)) {
+        if (string.muted) {
+          push(
+            "warning",
+            "duplicate-marker",
+            "This string is marked muted more than once; it is drawn once.",
+            line,
+            token.column,
+            token.text.length,
+          );
+          continue;
+        }
+        string.muted = true;
+        mutedToken = token;
+        continue;
+      }
 
       if (!FRET_TOKEN.test(token.text)) {
         push(
           "error",
           "bad-token",
-          `"${token.text}" is not a fret number. Use 0 for an open string, or a fret from 1 to ${String(maxFret)}.`,
+          `"${token.text}" is not a fret number. Use 0 for an open string, x for a muted one, or a fret from 1 to ${String(maxFret)}.`,
           line,
           token.column,
           token.text.length,
@@ -190,6 +220,17 @@ export function parseFretboard(source: string): FretboardParse {
       );
     }
 
+    if (mutedToken !== null && (string.open || string.frets.length > 0)) {
+      push(
+        "error",
+        "muted-with-marker",
+        "A muted string isn't played, so it can't also be open or fretted.",
+        line,
+        mutedToken.column,
+        mutedToken.text.length,
+      );
+    }
+
     string.frets.sort((a, b) => a - b);
     strings.push(string);
   });
@@ -208,7 +249,12 @@ export function parseFretboard(source: string): FretboardParse {
   // has its own error; reporting "nothing to draw" on top would pile a
   // consequence on its cause.
   if (markers === 0) {
-    push("error", "no-frets", "Add at least one fret, or 0 for an open string.", 0);
+    push(
+      "error",
+      "no-frets",
+      "Add at least one fret, 0 for an open string, or x for a muted one.",
+      0,
+    );
   }
 
   return done(stringCount, resolved, strings);

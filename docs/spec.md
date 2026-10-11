@@ -484,18 +484,20 @@ Each line holds an optional leading string label, then zero or more tokens:
 | --- | --- |
 | `0` | Play this string open. |
 | a positive integer, `1` to `maxFret` | Fret this string at that fret. |
+| `x` or `X` | Don't play this string: it is muted. |
 | *(empty line)* | This string carries no marker. |
 
 A fret token is exactly `0`, or a digit `1`–`9` followed by any number of digits.
 Nothing else parses: `00` has a leading zero, `3.5` is not an integer, `+3` and `3x` carry characters that are not digits.
 Each is a `bad-token` error rather than a value the plugin guesses at.
 
-The **first** whitespace-delimited token on a line is a string label when it does not begin with a digit.
-So `e 2 3` labels the string `e` and frets 2 and 3, while `3` alone is a fret.
+The **first** whitespace-delimited token on a line is a string label when it does not begin with a digit and is not `x` or `X`.
+So `e 2 3` labels the string `e` and frets 2 and 3, while `3` alone is a fret and `x` alone mutes the string.
 Requiring a label not to start with a digit keeps a mistyped fret number a fret number rather than silently becoming a label.
-Only the first token can be a label; a non-fret token anywhere else is a `bad-token` error.
+No tuning is named `x`, so a muted marker is never mistaken for a label; a labeled muted string is written `E x`.
+Only the first token can be a label; a token anywhere else that is not a fret or a muted marker is a `bad-token` error.
 
-A `0` MUST NOT be combined with a fret number on the same string: a string is either open or fretted.
+A string is open, fretted or muted, and only one of them: a `0` MUST NOT be combined with a fret number, and an `x` MUST NOT be combined with a `0` or a fret number.
 Tokens on a line may appear in any order; duplicates are collapsed.
 The number of lines is the string count, which MUST be 4, 6 or 7 (`unsupported-string-count`).
 
@@ -527,9 +529,11 @@ The *window* is the inclusive range of frets `[lo, hi]` the diagram draws.
 It is computed from the source frets — tokens of `1` or more, since `0` is not a fret — by buffering the shape on each side:
 
 1. `lo = minSourceFret − leadingFrets` and `hi = maxSourceFret + trailingFrets`.
-   A source whose only markers are `0` has no frets to measure from; it takes `lo = 1`, `hi = minFrets`, and is done.
+   A source whose only markers are `0` or `x` has no frets to measure from; it takes `lo = 1`, `hi = minFrets`, and is done.
 2. `lo` is clamped to a minimum of `1`: there is no fret 0 to draw, and none below it.
 3. If the source contains any `0`, `lo` is forced to `1`, since an open-string marker is drawn relative to the nut.
+   A muted marker does **not** force the nut: it says nothing about frets, and forcing it would stretch a muted barre chord high on the neck down to fret 1.
+   It sits on boundary 0, which is the nut only when the window reaches it.
 4. `hi` is clamped to `maxFret`, for the same reason in the other direction: the window may not extend past the last fret that exists.
 5. If the window is narrower than `minFrets`, it is widened — rightward while `hi` is below `maxFret`, then leftward while `lo` is above `1`.
 
@@ -554,12 +558,14 @@ Boundary `0` is the **nut** when `lo = 1`.
 
 #### Node tree
 
-The tree is built by `renderFretboard` in `src/plugin/render.ts`, from the scene's items in order: a single parent frame carrying the plugin data, holding the string labels, fret boundaries, string lines, dots, open discs and fret labels directly, with no row frames.
+The tree is built by `renderFretboard` in `src/plugin/render.ts`, from the scene's items in order: a single parent frame carrying the plugin data, holding the string labels, fret boundaries, string lines, dots, open discs, muted markers and fret labels directly, with no row frames.
 
 - The parent frame has no auto-layout, no padding and no fill, and is resized to the scene's extent.
   Re-rendering a frame that was tablature switches its auto-layout off, since the render target follows the selection whatever mode the frame was.
 - Layer names follow tablature's rule: indices are 0-based, and a fret label is named for its absolute fret number.
 - Dots and open discs are ellipses whose stroke, when they have one, sits inside the disc, so a disc's ink is exactly `dotDiameter` across.
+- A muted marker is three nodes: an ellipse, then its two diagonal strokes.
+  The strokes are the only lines that are not axis-aligned, and are drawn as rectangles like every other line, rotated by a transform core computes.
 
 #### Coordinates
 
@@ -585,11 +591,14 @@ String labels are right-aligned to `x = L − stringLabelGap` and centered on th
 - An **open string** is a disc of the same `dotDiameter` superimposed on the nut, centered at `x = L` and on the string's `y`, with a `strokeWeight` stroke in `inkColor` and a `knockoutFill` fill.
   The fill is what makes it read as an open marker rather than a fretted one: the nut line and the string line both stop at its edge instead of running through it.
   There is no fret gap for an open string to sit in — fret 1's gap belongs to a source token of `1` — so the disc goes on the nut itself, which is why any `0` forces the window to include the nut.
+- A **muted string** is a disc of the same `dotDiameter` at the same place, on boundary 0, filled with `knockoutFill` and with no stroke, carrying an X: two diagonal strokes of `strokeWeight` in `inkColor`, crossing at the disc's centre.
+  The fill stops the nut and string line at the disc's edge, as for an open string, and the missing outline is what tells the two apart.
+  Each stroke is as long as it can be while its ink, square ends included, stays inside the disc.
 - `dotDiameter` MUST exceed `nutStrokeWeight`, or an open disc cannot cover the nut it sits on.
   At the defaults it is 10 against 4.
-- Z-order is boundaries and string lines first, then dots and open discs, then fret labels.
-  An open disc drawn before the nut would be hidden by it.
-- The open disc's fill assumes a white background, and is the last thing in either mode that does; see [Non-goals](#non-goals).
+- Z-order is boundaries and string lines first, then dots, open discs and muted markers, then fret labels.
+  An open disc or muted marker drawn before the nut would be hidden by it.
+- The open and muted discs' fill assumes a white background, and they are the last things in either mode that do; see [Non-goals](#non-goals).
 
 ### Fretboard string labels
 
@@ -616,7 +625,7 @@ Six are user-configurable: `fretGapWidth`, the width of each drawn fret; `string
 Their defaults and ranges are in `src/core/settings.ts`, which is also where the UI reads the `min`, `max` and `step` for its inputs.
 `leadingFrets` and `trailingFrets` count frets, so they are whole numbers; see [Settings validation](#settings-validation).
 
-Everything else is fixed for v1 and lives in the same module: `clearance`; `minFrets`, the narrowest window; `maxFret`, the highest fret a source may name and the highest the window may reach; `nutStrokeWeight`; `dotDiameter`; `fretLabelGap`; `stringLabelGap`; `defaultTunings`; `knockoutFill`, the open disc's fill; `inkColor`; and `fontFamily`, shared with tablature.
+Everything else is fixed for v1 and lives in the same module: `clearance`; `minFrets`, the narrowest window; `maxFret`, the highest fret a source may name and the highest the window may reach; `nutStrokeWeight`; `dotDiameter`; `fretLabelGap`; `stringLabelGap`; `defaultTunings`; `knockoutFill`, the open and muted discs' fill; `inkColor`; and `fontFamily`, shared with tablature.
 
 ### Fretboard test cases
 
@@ -655,6 +664,20 @@ The case asserts the full geometry at the default settings, and in particular:
 - The leading and trailing buffer frets contain no dots.
 - The low E string's two dots sit on frets 7 and 9, which carry the root and the 9th.
 - Nothing is drawn within `clearance` of the top of the frame or below its bottom: `padY` keeps the first string's ornaments inside the frame.
+
+**TC-F5 — muted strings.** An open D major chord, with the two lowest strings muted.
+
+```
+2
+3
+2
+0
+x
+x
+```
+
+Both muted strings carry an X on a `knockoutFill` disc with no outline, centered at `x = L` like the open disc on the D string.
+The window is TC-F2's: the `0` is what pulls it to the nut, not the `x` markers.
 
 ## Text, fonts and measurement
 
@@ -876,7 +899,8 @@ Hence `leading-blank-line` below — it renders either way, but says what it ass
 
 - A token other than a leading string label that is not `0` or a positive integer is an error at that token. Guessing at `3.5` or `3x` would draw a dot the user didn't write.
 - A line combining `0` with a fret number is an error: a string is either open or fretted.
-- A line repeating a fret, or repeating `0`, is a **warning**, and the repeat is collapsed. Both copies mean the same thing, so there is a sensible render.
+- A line combining `x` with a `0` or a fret number is an error at the `x`: a muted string isn't played.
+- A line repeating a fret, `0` or `x` is a **warning**, and the repeat is collapsed. Both copies mean the same thing, so there is a sensible render.
 - A source where no line carries any marker is an error, since there is nothing to draw. It stays quiet when a line wrote a marker that failed to parse, which already has its own error.
 - A leading blank line is a **warning**, taken as a markerless first string, because the string-count check cannot catch a stray newline.
 - A fret past `maxFret` is an error, and the only fret rejection: the window itself is clamped rather than rejected.
@@ -908,10 +932,9 @@ An implementation that adds any of it is doing unrequested work.
 
 | Deferred | Note |
 | --- | --- |
-| Fretboard open markers on backgrounds that are not white | Open discs are filled with `knockoutFill`, so on a dark frame or over artwork they show as white discs. Tablature no longer has this problem: its string lines are cut into segments around each cell (see [String lines and gaps](#string-lines-and-gaps)). The fretboard fix is either a theme-aware fill or cutting the nut and string lines around the disc the same way. |
+| Fretboard open and muted markers on backgrounds that are not white | Open and muted discs are filled with `knockoutFill`, so on a dark frame or over artwork they show as white discs. Tablature no longer has this problem: its string lines are cut into segments around each cell (see [String lines and gaps](#string-lines-and-gaps)). The fretboard fix is either a theme-aware fill or cutting the nut and string lines around the disc the same way. |
 | Color and theme settings | `inkColor` is fixed black. Exposing stroke and text color is a settings-table addition and a schema-compatible change. |
 | Fretboard position label (`5fr` style) | Every drawn fret is labeled instead. |
-| Muted strings in fretboard diagrams | An `x` input class was specified and then removed: muted strings are a chord-chart convention and are unusual in the fretboard diagrams this mode draws. Tablature is unaffected — there an `x` is a valid note cell, rendered as literal text. |
 | Finger numbers inside fretboard dots | Would need new ASCII syntax. |
 | Barre indicators | Same. |
 | Multi-string-count sources in one tablature render | Currently `inconsistent-string-count`, an error. |

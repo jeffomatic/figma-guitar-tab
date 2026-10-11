@@ -1,12 +1,12 @@
 // Scene -> Figma nodes.
 //
 // This file makes no layout decisions. Every coordinate comes from the scene,
-// and the only arithmetic here is the hex-to-RGB conversion Figma's API wants
-// and a line's length. If something in here starts wanting a test, it belongs
-// in `src/core/` instead.
+// and the only arithmetic here is the hex-to-RGB conversion Figma's API wants:
+// lines get their size and transform from core's `lineBox`. If something in
+// here starts wanting a test, it belongs in `src/core/` instead.
 
 import type { FretboardScene } from "../core/fretboard/layout";
-import type { DiscItem, LineItem, RectItem, TextItem } from "../core/scene";
+import { lineBox, type DiscItem, type LineItem, type RectItem, type TextItem } from "../core/scene";
 import type { RowScene, TablatureScene } from "../core/tablature/layout";
 import { applyTextStyle } from "./font";
 
@@ -50,25 +50,15 @@ function createItem(item: SceneItem, font: FontName): SceneNode {
       // fills exactly [x, x+width] x [y, y+height]. That is what makes a break
       // meet a string line squarely, since both are then positioned from the
       // same centre line by the same half-thickness.
-      const horizontal = item.y1 === item.y2;
-      const vertical = item.x1 === item.x2;
-      if (!horizontal && !vertical) {
-        throw new Error(`${item.name}: lines must be axis-aligned`);
-      }
-
-      const thickness = item.strokeWeight;
+      //
+      // A diagonal -- only the muted X -- is the same rectangle rotated by an
+      // explicit transform, not a rotated LineNode. `lineBox` computes the size
+      // and transform for every line, so nothing here does geometry.
+      const box = lineBox(item);
       const rect = figma.createRectangle();
       rect.name = item.name;
-
-      if (horizontal) {
-        rect.x = Math.min(item.x1, item.x2);
-        rect.y = item.y1 - thickness / 2;
-        rect.resize(Math.abs(item.x2 - item.x1), thickness);
-      } else {
-        rect.x = item.x1 - thickness / 2;
-        rect.y = Math.min(item.y1, item.y2);
-        rect.resize(thickness, Math.abs(item.y2 - item.y1));
-      }
+      rect.resize(box.width, box.height);
+      rect.relativeTransform = box.transform;
 
       rect.fills = [solid(item.stroke)];
       rect.strokes = [];
