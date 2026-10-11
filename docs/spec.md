@@ -571,7 +571,8 @@ It is never 0, because every string has a label — which is what keeps the open
 The whole board is offset right by `L`, which leaves the label column to its left.
 
 Fret boundaries are evenly spaced `fretGapWidth` apart from `x = L`, and strings `stringGap` apart from `y = padY`.
-Boundary lines span the strings from top to bottom; string lines span the boundaries from the nut, or boundary 0, to the last.
+Boundary lines span the strings from top to bottom, overshooting each end by half a stroke weight as tablature's measure breaks do, so the nut and every boundary cover the full thickness of the outer string lines rather than stopping at their centres; string lines span the boundaries from the nut, or boundary 0, to the last.
+The frame extends a full stroke weight past the last boundary, so its ink is not clipped.
 Beneath the board, after `fretLabelGap`, is one row of fret labels, and the frame ends at their bottom edge.
 String labels are right-aligned to `x = L − stringLabelGap` and centered on their string's `y`, as in tablature.
 

@@ -193,7 +193,8 @@ describe("fretboard layout", () => {
       );
       for (const line of lines) {
         expect(line.x2).toBe(line.x1);
-        expect([line.y1, line.y2]).toEqual([8, 88]);
+        // Half a string stroke past the outer strings, so their ends are covered.
+        expect([line.y1, line.y2]).toEqual([7.5, 88.5]);
       }
     });
 
@@ -208,7 +209,8 @@ describe("fretboard layout", () => {
     });
 
     it("frame", () => {
-      expect([px(s.width), s.height]).toEqual([231.2, 106]);
+      // A full stroke past the last boundary, so its ink isn't clipped.
+      expect([px(s.width), s.height]).toEqual([232.2, 106]);
       expect(s.height).toBe(padY + boardHeight + fretLabelGap + fontSize);
     });
 
@@ -261,6 +263,26 @@ describe("fretboard layout", () => {
     expect(scene(TCF4, { leadingFrets: 4 }).items.some((i) => i.name === "Nut")).toBe(false);
     const reached = scene(TCF4, { leadingFrets: 5 });
     expect(named(reached, "Nut").kind).toBe("line");
+  });
+
+  it("the nut covers the full thickness of the outer string lines", () => {
+    for (const weight of [1, 3, 8]) {
+      const s = scene(TCF2, { strokeWeight: weight });
+      const nut = named(s, "Nut") as ItemOf<"line">;
+      const lines = stringLines(s);
+      const top = Math.min(...lines.map((l) => l.y1)) - weight / 2;
+      const bottom = Math.max(...lines.map((l) => l.y1)) + weight / 2;
+      expect([nut.y1, nut.y2]).toEqual([top, bottom]);
+      for (const line of boundaries(s)) expect([line.y1, line.y2]).toEqual([top, bottom]);
+    }
+  });
+
+  it("the last boundary's ink stays inside the frame", () => {
+    for (const weight of [1, 8]) {
+      const s = scene(TCF2, { strokeWeight: weight });
+      const last = boundaries(s).at(-1);
+      expect(last && last.x1 + weight / 2).toBeLessThan(s.width);
+    }
   });
 
   it("an open disc stays inside the frame on the left", () => {

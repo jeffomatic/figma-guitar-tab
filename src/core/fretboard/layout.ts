@@ -111,7 +111,10 @@ export function layoutFretboard(
   const stringY = (index: number): number => padY + index * stringGap;
   const boardHeight = (labels.length - 1) * stringGap;
   const boundaryX = (j: number): number => labelColumn + j * fretGapWidth;
-  const width = boundaryX(fretCount);
+  // A full stroke past the last boundary, as tablature allows past its closing
+  // break: half is what the boundary's ink occupies, and a whole weight keeps
+  // that ink strictly inside the frame's clip instead of on its edge.
+  const width = boundaryX(fretCount) + strokeWeight;
   const height = padY + boardHeight + fretLabelGap + fontSize;
   // Fret labels and dots sit in the gap, not on a boundary line, so a label is
   // directly beneath the dots it applies to.
@@ -132,6 +135,12 @@ export function layoutFretboard(
     });
   });
 
+  // Every boundary, the nut included, overshoots the outer string lines by half
+  // a string stroke. Ending on `stringY(0)` would end at the *centre* of the
+  // top string's stroke, leaving the outer half of its thickness uninked where
+  // they meet -- a nut visibly short at top and bottom, and a notch at every
+  // corner. Same rule as tablature's measure breaks.
+  const overshoot = strokeWeight / 2;
   for (let j = 0; j <= fretCount; j++) {
     // Boundary 0 is the nut only when the window starts at the first fret.
     const isNut = j === 0 && lo === 1;
@@ -139,9 +148,9 @@ export function layoutFretboard(
       kind: "line",
       name: isNut ? "Nut" : `Fret Boundary ${String(j)}`,
       x1: boundaryX(j),
-      y1: padY,
+      y1: padY - overshoot,
       x2: boundaryX(j),
-      y2: padY + boardHeight,
+      y2: padY + boardHeight + overshoot,
       strokeWeight: isNut ? nutStrokeWeight : strokeWeight,
       stroke: inkColor,
     });
@@ -153,7 +162,7 @@ export function layoutFretboard(
       name: `String ${String(index)}`,
       x1: labelColumn,
       y1: stringY(index),
-      x2: width,
+      x2: boundaryX(fretCount),
       y2: stringY(index),
       strokeWeight,
       stroke: inkColor,
