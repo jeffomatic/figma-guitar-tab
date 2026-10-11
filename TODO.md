@@ -29,6 +29,7 @@ Build in this order; each one is independently verifiable.
 | M3 | Tablature renderer | A frame appears in Figma matching M2's scene: node kinds, 0-based layer names, z-order, fonts loaded with `lineHeight` pinned, placed at the default location and left selected. Driven by a hardcoded source in the sandbox, which M4 deletes | done |
 | M4 | UI shell and protocol | The shared protocol module and every message in it, including `close`. Source field, settings controls carrying their ranges as input attributes, live diagnostics that select the offending range when clicked, render button disabled while any diagnostic is an error. Labels come from the spec's naming table. Replaces M3's hardcoded source | done |
 | M5 | Persistence and re-edit | Plugin data written and read; all three `SelectionState` cases, including refusing a newer `schemaVersion` and disabling render while such a frame is selected; the editor clobbered by an editable selection and left alone otherwise; render target following the selection; relaunch button via `setRelaunchData` plus its manifest entry; `clientStorage` defaults written while handling `render`; `figma.notify` for outcomes outside the iframe | done |
+| M5a | Tablature string gaps | String lines are cut into segments around each note cell, as [String lines and gaps](docs/spec.md#string-lines-and-gaps) describes, and the knockout rectangles are gone from tablature scenes. Each gap is the horizontal span its knockout covered — the cell's own measured width plus `clearance` on each side — so the visual spacing is unchanged. Overlapping or touching gaps merge, and a zero-length segment is never emitted. TC-1, TC-5, TC-8 and TC-9 assert segments instead of rectangles, and the z-order test drops knockouts | not started |
 | M6 | Fretboard parser and layout | Parse results and geometry for every fretboard test case, the fret-window worked examples including the clamps at both ends, and every fretboard diagnostic | not started |
 | M7 | Fretboard renderer and UI tab | Widens `Diagram`, `Defaults` and `Mode` in `src/core/protocol.ts` to both modes, which M4 left tablature-only. The Fretboard tab renders: nut versus ordinary boundary, dots, open discs with their knockout fill, fret labels carrying absolute fret numbers, string labels. Mode switching, and per-mode last-used settings | not started |
 
@@ -41,6 +42,15 @@ Two notes on the shape of this list:
 
 - The renderer draws **axis-aligned lines in either orientation**, so M7's fret boundaries and nut need no new mechanism.
 - A tablature slot is now **notes or a break**, so M6 and M7 should not assume a slot holds cells.
+
+**M5a is next, ahead of M6.** It is lettered rather than numbered so that the spec's *illustrative after M6* and *M7* markers keep meaning what they say.
+It replaces the shortcut M2 and M3 took for text over string lines: an opaque white rectangle behind each cell, which showed as a white bar on Figma's grey canvas and on any frame that wasn't white.
+The layout already computes everything the cut needs — each knockout was sized from its own cell — so this is a change to `src/core/tablature/layout.ts` and its tests, and the renderer is untouched.
+What it leaves for later milestones:
+
+- The fretboard's open disc is now the only node filled with `knockoutFill`.
+  M7 keeps that as the spec describes, a known v1 limit, rather than inventing a fix the spec doesn't ask for.
+- Scene line items that represent one string may now be several, so M7 should not assume one line per string.
 
 There is no "polish" milestone.
 Settings clamping belongs to M2, where settings first arrive, and selection-change behavior to M5, where selection is first read; a milestone that collects them later would just be a license for the earlier ones to ship unfinished.

@@ -135,8 +135,11 @@ Those are resolved by clamping inside core, not by a diagnostic — a setting th
   Load once per render, not per node.
 - Set `lineHeight` to `fontSize` and `textAutoResize` to `WIDTH_AND_HEIGHT` on every text node.
   Figma's default auto line height is a font metric, so leaving it alone makes node heights unpredictable and the spec's vertical formulas wrong.
-- Node z-order is creation order within a parent, so the renderer appends scene items in the order the spec lists them: labels, string lines, measure breaks, knockouts, text.
-  A knockout rectangle created before its string line would be hidden by it.
+- Node z-order is creation order within a parent, so the renderer appends scene items in the order the spec lists them: labels, string segments, measure breaks, text.
+- **Leave the background alone: never hide ink by painting over it.**
+  Tablature string lines stop short of each note cell instead of running behind it under a white rectangle, because Figma's canvas is grey and a design's frames are any colour.
+  Where a line has to give way to something, layout cuts the line into segments; the renderer just draws them.
+  The fretboard's open disc is the one exception left, and the spec lists it as a v1 limit.
 - Plugin data values are strings only.
   Everything structured is JSON.
 - `setRelaunchData` is a method on the node, and requires a matching `relaunchButtons` entry in `manifest.json`.

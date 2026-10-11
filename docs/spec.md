@@ -200,7 +200,7 @@ Text measurement, fonts and vertical centering are specified once for both modes
 
 #### Node tree
 
-The tree is built by the renderer in `src/plugin/render.ts`: a parent frame carrying the plugin data, holding one row frame per row group, each holding that row's string labels, string lines, knockout rectangles and note-cell text.
+The tree is built by the renderer in `src/plugin/render.ts`: a parent frame carrying the plugin data, holding one row frame per row group, each holding that row's string labels, string line segments, measure breaks and note-cell text.
 
 - The parent frame uses vertical auto-layout with `itemSpacing` = **rowGap**, no padding, and no fill.
   Row frames are absolutely positioned internally (text overlaps the string lines' band), have no fill, and are resized to their computed extent.
@@ -250,7 +250,7 @@ That is deliberate: the rendering respects what the ASCII says, rather than impo
 Two properties of this model are worth stating, because the obvious simpler formula (`x = n × noteGap`) breaks on the test cases below:
 
 - **Slots widen to fit their contents, and the gap stays constant.** The advance is the widest cell's width *plus* `noteGap`, so the whitespace between a cell and the next slot is exactly `noteGap` however wide the cells are.
-  A cell like `2h3p2` is five characters and pushes its slot out by all of them; without that, a long cell overlaps its neighbor's text and its knockout hides part of the next slot (TC-3, TC-7).
+  A cell like `2h3p2` is five characters and pushes its slot out by all of them; without that, a long cell overlaps its neighbor's text and its gap swallows the string line under the next slot (TC-3, TC-7).
 
   This replaced an earlier rule, `max(noteGap, cellWidth + minimumGap)`, which treated the setting as a *minimum advance*.
   That version applied two rules at once — narrow slots were governed by the pitch, wide ones by the separate minimum — so the whitespace *shrank* as cells grew wider, and a wide cell ended up nearly touching the next slot.
@@ -259,37 +259,46 @@ Two properties of this model are worth stating, because the obvious simpler form
   Centering would stagger them whenever a slot mixes widths — a `10` and a `5` on different strings would no longer line up (TC-7).
   Text nodes therefore use left horizontal alignment and are positioned by their left edge, never by a center point.
 
-#### String lines and knockouts
+#### String lines and gaps
 
-Each string is **one** horizontal line spanning `x` from the opening measure break to the closing one, as thick as **strokeWeight** in **inkColor**, centred on the string's `y`.
+Each string is drawn as **one or more horizontal segments** that together span `x` from the opening measure break to the closing one, as thick as **strokeWeight** in **inkColor**, centred on the string's `y`.
+Wherever a note cell sits on a string, the line stops short of the cell's text and resumes after it, leaving a **gap**.
+Nothing is drawn in a gap, so whatever is behind the diagram shows through: the rendering makes no assumption about the background.
 Each measure break is one **vertical** line at its own `x`, running from the top string's `y` to the bottom string's, as thick as **strokeWeight** in **inkColor** — and overshooting each end by **half a stroke weight**, so that it covers the full thickness of the string lines it meets.
 
 **Every line is drawn as a rectangle, not a `LineNode`.** A `LineNode`'s ink does not sit where its geometry says: a rotated one draws off along its length, and a horizontal one does not straddle its `y`. A rectangle's ink fills exactly its bounds, so a line of thickness `w` centred on a coordinate is a rectangle offset by `w / 2` — which is what makes a break meet a string line squarely, since both are then positioned from the same centre line by the same half-thickness. This is a rendering concern: layout emits a line as two endpoints and a thickness, and says nothing about which node draws it.
+A string segment is an ordinary scene line, so the renderer needs nothing new to draw one.
 
 The overshoot is what makes the row's corners clean. A break that stopped at the top string's `y` would stop at the *centre* of that string's stroke, leaving the outer half of its thickness uninked where the two lines meet: a notch at the corner, most visible at the closing break where there is no further line to hide it. Overshooting covers exactly that half. On an interior break it is invisible, running half a stroke past the outer strings and well inside `padY`.
-The line is never broken: where text would collide with it, an opaque rectangle hides it.
 
-Each note cell gets one `RectangleNode`, computed from that cell alone: centered on the string's line, extending `clearance` past the text on each side, filled with `knockoutFill`, opaque and unstroked.
-Its width comes from **that cell's** measured text, never from the width of the slot it sits in — which is the distinction the three properties below depend on.
+Each note cell cuts one gap, computed from that cell alone: from `clearance` before the cell's left edge to `clearance` past its right edge.
+The right edge comes from **that cell's** measured text, never from the width of the slot it sits in — which is the distinction the properties below depend on.
+A gap has no height of its own: the line is simply absent across it.
 
-The rectangle only has to cover the line, which is `strokeWeight` thick, so its height is that plus a hair of `clearance` on each side rather than the height of the text.
-At the defaults that is 5 px, not 12.
+A string's segments are the complement of its gaps within the span from the opening break to the closing one:
 
-Z-order within a row frame is string labels, then string lines, then measure breaks, then knockouts, then cell text.
-Breaks group with the structural lines rather than the text: a break slot holds no cells, so no knockout ever covers one.
-Nothing is merged, clamped or inverted: rectangles are independent, and two that overlap are harmless.
-Three properties follow for free, all asserted in TC-8:
+- Gaps that overlap or touch are merged before the complement is taken, so two gaps never leave a zero-length segment between them.
+- "Touch" is decided with a small tolerance that exists only to absorb floating-point noise from measurement, so two gaps that meet exactly don't leave a sliver.
+  Any segment longer than that is drawn, however short.
+- A gap never reaches a measure break, including the two that bracket the row.
+  Every break sits a full `noteGap` from the nearest cell, so at least `noteGap − clearance` of line separates a gap from a break, and the gap needs no clamping to the row.
+- A string with no cells is a single segment spanning the row.
 
-- **A string not played during a slot runs straight through it**, because a cell that doesn't exist produces no rectangle — even where a long cell on another string has made that slot wide.
-- **A cell narrower than its slot hides only its own width**, since the rectangle is sized from the cell's text rather than from the widest cell in the slot.
-- **Rectangles that abut or overlap need no special handling.** Cutting the line into segments instead required merging intervals that touch at a point, inverting the union and discarding sub-pixel remnants; none of that arises here.
-  With a uniform gap, consecutive knockouts on one string in fact never touch — they sit `noteGap` apart, less the `clearance` each adds — so this is now a robustness property rather than a case the defaults reach.
+Segments are named `String i Segment k`, with `k` counted 0-based from the left within each string, and a string that is one segment is still `String i Segment 0`.
 
-One limit of the approach, accepted for v1: it assumes a white background.
-On a dark frame or over artwork the rectangles show as white bars; see [Non-goals](#non-goals).
-Keeping them only as tall as the line they hide holds that artifact to a 5 px bar at the defaults.
+Z-order within a row frame is string labels, then string segments, then measure breaks, then cell text.
+Nothing overlaps a string line any more, so the order hides nothing; it is fixed so that the layer list reads the same way in every render.
+Three properties follow, all asserted in TC-8:
 
-A rectangle reaches over a neighbouring string only if `strokeWeight + 2 × clearance` exceeds `stringGap` — 5 against 16 at the defaults, and only reachable with a heavy stroke and a tiny string gap, where the lines would be touching anyway.
+- **A string not played during a slot runs straight through it**, because a cell that doesn't exist cuts no gap — even where a long cell on another string has made that slot wide.
+- **A cell narrower than its slot cuts only its own width**, since the gap is sized from the cell's text rather than from the widest cell in the slot.
+- **Consecutive gaps on one string are separated by `noteGap − 2 × clearance` of line.**
+  That is 12 px at the defaults, and zero only at `noteGap`'s minimum, where the merge rule above turns two gaps into one rather than leaving an empty segment.
+
+This replaced an earlier model in which each string was one unbroken line and an opaque rectangle, filled with `knockoutFill`, hid the line behind each cell.
+That model needed no interval arithmetic, but it assumed a white background, and showed as white bars on Figma's grey canvas or on any frame or artwork that wasn't white.
+Segments need no fill, so the background problem disappears rather than being themed around.
+The gap's horizontal extent is exactly the span the knockout covered, so the visual spacing between a cell and its string line is unchanged.
 
 ### Tablature render settings
 
@@ -299,7 +308,7 @@ Five are user-configurable: `noteGap`, the whitespace between a note cell and th
 `noteGap`'s minimum is what keeps two cells from ever touching, so no separate minimum-gap constant is needed.
 Their defaults and ranges are in `src/core/settings.ts`, which is also where the UI reads the `min`, `max` and `step` for its inputs.
 
-Everything else is fixed for v1 and lives in the same module: `clearance`, the spacing that keeps a knockout clear of the text it sits behind; `stringLabelGap`; `knockoutFill` and `inkColor`; `fontFamily`, `Roboto Mono` falling back to `Roboto`; and `defaultTunings`.
+Everything else is fixed for v1 and lives in the same module: `clearance`, the space between a note cell's text and the string line on either side of it; `stringLabelGap`; `inkColor`; `fontFamily`, `Roboto Mono` falling back to `Roboto`; and `defaultTunings`.
 
 ### Tablature test cases
 
@@ -311,7 +320,7 @@ Those numbers were deleted from this document when M2 landed, deliberately: a fi
 
 **TC-1 — multiple rows.** Renders as two row frames under one parent frame, with `rowGap` between them.
 Both rows hold the same slots, so their geometry must come out identical — which is what proves row coordinates are row-local and that `rowGap` never leaks into one.
-The labels are defaulted, and the knockouts tile each string line without touching.
+The labels are defaulted, and each string's five cells cut its line into six segments, with no two gaps touching.
 
 ```
 -1-2-3-4-5-
@@ -373,7 +382,7 @@ E -----
 ```
 
 **TC-5 — sparse strings.** The `2` on the 4th string belongs to the second slot, not the first: ordinal alignment within a string would wrongly make it simultaneous with the first chord.
-It is also alone in its slot, so only one knockout appears there.
+It is also alone in its slot, so only one string has a gap there.
 
 ```
 -0---0-
@@ -410,14 +419,15 @@ Its first slot mixes a two-character cell with two one-character cells, and all 
 Its second slot holds a five-character cell, so it advances by that width plus `noteGap`, and the third slot starts a full gap clear of it — the same gap the first slot gets, which is the point.
 The source supplies no labels, so the label column holds standard tuning — which is why the first slot does not begin at half a pitch from the frame's edge.
 
-**TC-8 — knockouts.** The TC-7 source again, asserting the rectangles rather than the slots.
-Its six cells produce six rectangles, each only as tall as the line it hides, and all six string lines stay single nodes spanning the row.
+**TC-8 — string gaps.** The TC-7 source again, asserting the string segments rather than the slots.
+Its six cells cut six gaps, and the row's scene holds no `rect` items at all.
 The cases this pins down, with strings numbered from 0 at the top:
 
-- Strings 2, 3 and 4 have no cells, so they have no rectangles at all — their lines are uninterrupted by construction, not by a computed complement.
-- String 1 has no cell in the second slot, so nothing covers its line across that slot, even though the slot is wide for `12b14` on string 0.
-- String 1's rectangle in the first slot is narrower than string 0's, because each is sized from its own cell's width (`5` versus `10`).
-- On string 0, the `12b14` rectangle ends exactly where the `7` rectangle begins. They abut, and the renderer does nothing about it; this is the case that needed an explicit merge rule under the segmentation model.
+- Strings 2, 3 and 4 have no cells, so each is a single segment spanning the row.
+- String 1 has no cell in the second slot, so its line runs unbroken across that slot, even though the slot is wide for `12b14` on string 0.
+  Its gaps are in the first and third slots only, which leaves it three segments.
+- String 1's gap in the first slot is narrower than string 0's, because each is sized from its own cell's width (`5` versus `10`).
+- On string 0, the segment between the `12b14` gap and the `7` gap is `noteGap − 2 × clearance` long: the shortest a segment gets at the defaults.
 
 **TC-9 — muted notes.** A muted strum followed by an open G chord.
 No diagnostics: an `x` is as valid a cell as a digit, and is rendered verbatim.
@@ -431,7 +441,7 @@ No diagnostics: an `x` is as valid a cell as a digit, and is rendered verbatim.
 -x-3-
 ```
 
-Every cell is one character, so every slot advances by the same amount and every knockout is the same size — an `x` is measured and laid out exactly like a fret number, with no special case anywhere in parsing or layout.
+Every cell is one character, so every slot advances by the same amount and every gap is the same width — an `x` is measured and laid out exactly like a fret number, with no special case anywhere in parsing or layout.
 
 **TC-10 — measure breaks.** Interior breaks between note slots, with an explicit opening and closing break that the row would have drawn anyway.
 Pins that a break takes a position of its own with a full gap on each side, and that writing the edge breaks changes nothing.
@@ -609,7 +619,7 @@ The whole board is offset right by `L`, which leaves the label column to its lef
   At the defaults it is 10 against 4.
 - Z-order is boundaries and string lines first, then dots and open discs, then fret labels.
   An open disc drawn before the nut would be hidden by it.
-- Like the tablature knockouts, the open disc's fill assumes a white background; see [Non-goals](#non-goals).
+- The open disc's fill assumes a white background, and is the last thing in either mode that does; see [Non-goals](#non-goals).
 
 ### Fretboard string labels
 
@@ -655,7 +665,7 @@ Fixed for v1, not user-configurable:
 | `fretLabelGap` | `6` |
 | `stringLabelGap` | `8` |
 | `defaultTunings` | 4, 6 and 7 strings |
-| `knockoutFill` | `#FFFFFF` |
+| `knockoutFill` | `#FFFFFF`, the open disc's fill |
 | `inkColor` | `#000000` |
 | `fontFamily` | `Roboto Mono` Regular, falling back to `Roboto` Regular |
 
@@ -970,7 +980,7 @@ An implementation that adds any of it is doing unrequested work.
 
 | Deferred | Note |
 | --- | --- |
-| Backgrounds that are not white | Tablature knockouts and fretboard open markers are filled with `knockoutFill`, so on a dark frame or over artwork they show as white blocks. The fix is either a theme-aware fill or a return to cutting string lines into segments, which needs no fill at all. |
+| Fretboard open markers on backgrounds that are not white | Open discs are filled with `knockoutFill`, so on a dark frame or over artwork they show as white discs. Tablature no longer has this problem: its string lines are cut into segments around each cell (see [String lines and gaps](#string-lines-and-gaps)). The fretboard fix is either a theme-aware fill or cutting the nut and string lines around the disc the same way. |
 | Color and theme settings | `inkColor` is fixed black. Exposing stroke and text color is a settings-table addition and a schema-compatible change. |
 | Fretboard position label (`5fr` style) | Every drawn fret is labeled instead. |
 | Muted strings in fretboard diagrams | An `x` input class was specified and then removed: muted strings are a chord-chart convention and are unusual in the fretboard diagrams this mode draws. Tablature is unaffected — there an `x` is a valid note cell, rendered as literal text. |
