@@ -26,8 +26,16 @@ export type TablatureCode =
   | "too-many-rows"
   | "empty-row-group";
 
-/** The fretboard mode's codes join this union at M6. */
-export type DiagnosticCode = SharedCode | TablatureCode;
+/** Codes raised only while parsing a fretboard diagram. */
+export type FretboardCode =
+  | "bad-token"
+  | "open-with-fret"
+  | "duplicate-marker"
+  | "no-frets"
+  | "leading-blank-line"
+  | "fret-out-of-range";
+
+export type DiagnosticCode = SharedCode | TablatureCode | FretboardCode;
 
 export interface ParseError {
   severity: Severity;
@@ -48,6 +56,56 @@ export interface ParseError {
   /** 0-based within that raw line, prefix included, when a precise run exists. */
   column?: number;
   length?: number;
+}
+
+/** Past this, the serialized plugin data would crowd Figma's per-key limit. */
+const MAX_SOURCE_CHARS = 50_000;
+
+/**
+ * The gates every source passes before either mode parses it: empty, too
+ * large, or holding a horizontal tab. None of them leaves anything honest to
+ * parse, so a parser that gets any back returns without reading further.
+ *
+ * "Tab" in the messages is the source field's own name, ASCII tab, so the
+ * wording holds for both modes.
+ */
+export function sourceGates(source: string): ParseError[] {
+  const errors: ParseError[] = [];
+  const error = (code: DiagnosticCode, message: string, line: number): ParseError => ({
+    severity: "error",
+    code,
+    message,
+    line,
+  });
+
+  if (source.trim() === "") {
+    errors.push(error("empty-source", "Enter some tab to render.", 0));
+  }
+  if (source.length > MAX_SOURCE_CHARS) {
+    errors.push(
+      error(
+        "source-too-large",
+        `This tab is ${String(source.length)} characters; keep it under ${String(MAX_SOURCE_CHARS)}.`,
+        0,
+      ),
+    );
+  }
+
+  const lines = source.split("\n");
+  const tabLine = lines.findIndex((text) => text.includes("\t"));
+  if (tabLine >= 0) {
+    errors.push({
+      ...error(
+        "tab-character",
+        "Tab characters make it impossible to tell which notes line up. Use spaces instead.",
+        tabLine,
+      ),
+      column: lines[tabLine]?.indexOf("\t") ?? 0,
+      length: 1,
+    });
+  }
+
+  return errors;
 }
 
 export interface SourceRange {

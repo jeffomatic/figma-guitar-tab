@@ -544,19 +544,7 @@ There is no separate "whole neck" mode, because `leadingFrets` already expresses
 At the default `leadingFrets` of 1, the nut appears exactly when the shape sits within a fret of it, which is when it carries information — a shape five frets up neither needs the nut nor the empty frets between.
 Fret labels carry absolute fret numbers (TC-F4), so a window that excludes the nut is still unambiguous about position.
 
-Worked examples, with `minFrets = 4` — illustrative after M6, authoritative: `src/core/fretboard/layout.test.ts`:
-
-| Source frets | `leadingFrets` / `trailingFrets` | Window | Why |
-| --- | --- | --- | --- |
-| `2,3,4,5` | 1 / 1 | 1–6 | `lo` would be 1 anyway; the nut lands in view |
-| `0,2,3` open chord | 1 / 1 | 1–4 | |
-| `7` plus a `0` | 1 / 1 | 1–8 | step 3: an open string needs the nut |
-| `0` only | 1 / 1 | 1–4 | step 1: no frets to buffer, so the window is `minFrets` wide from the nut |
-| `7,9,10` | 2 / 1 | 5–11 | |
-| `2,3` | 3 / 0 | 1–4 | step 2 clamps, then step 4 widens |
-| `12` | 1 / 1 | 11–14 | step 5 widens a one-fret shape rightward |
-| `7,9` | 24 / 1 | 1–10 | a large `leadingFrets` hits the step 2 clamp, anchoring at the nut |
-| `30` | 1 / 1 | 27–30 | step 4 clamps `hi` to `maxFret`, then step 5 widens leftward because it cannot widen right |
+The worked examples — an open chord, a shape high on the neck, and the clamps at both ends — are in `src/core/fretboard/layout.test.ts`, which is authoritative for the window.
 
 ### Fretboard render model
 
@@ -584,28 +572,18 @@ Frame  "Fretboard Diagram"          ← parent frame; carries the plugin data
 
 #### Coordinates
 
-*Illustrative after M6. Authoritative: `src/core/fretboard/layout.ts` and its tests.*
+Every formula and figure lives in `src/core/fretboard/layout.ts` and its tests.
+What follows is the shape of the model and why it is shaped that way.
 
-`S` is the number of strings, `i` the 0-based string index from the top, and `f` a fret in the window.
-`L` is the label column width, exactly as in tablature: `max(labelTextWidth) + stringLabelGap`.
-It is never 0, because every string has a label — which is what keeps the open disc inside the frame: `L` is at least `stringLabelGap` (8), comfortably more than the `dotDiameter / 2` (5) that a disc centered on the nut extends to its left.
+`L` is the label column width, exactly as in tablature: the widest label plus `stringLabelGap`.
+It is never 0, because every string has a label — which is what keeps the open disc inside the frame: `L` is at least `stringLabelGap`, comfortably more than half the `dotDiameter` that a disc centered on the nut extends to its left.
 The whole board is offset right by `L`, which leaves the label column to its left.
 
-| Quantity | Formula |
-| --- | --- |
-| Vertical padding `padY` | `max(dotDiameter, fontSize) / 2 + clearance` |
-| Fret boundary `j` `x` | `L + j × fretGapWidth` |
-| String `i` `y` | `padY + i × stringGap` |
-| Board height `B` | `(S − 1) × stringGap` |
-| Frame width | `L + M × fretGapWidth` |
-| Frame height | `padY + B + fretLabelGap + fontSize` |
-| Fret gap center for fret `f` | `L + (f − lo + 0.5) × fretGapWidth` |
-| Dot for fret `f` on string `i` | disc of `dotDiameter`, centered on that gap center and on the string's `y` |
-| Open disc, string `i` | disc of `dotDiameter`, centered on the nut at `x = L` and on the string's `y` |
-| Label text node, string `i` | right-aligned to `x = L − stringLabelGap`, centered on the string's `y` |
-| Fret label for fret `f` | text centered on the fret gap center, top edge at `y = padY + B + fretLabelGap` |
+Fret boundaries are evenly spaced `fretGapWidth` apart from `x = L`, and strings `stringGap` apart from `y = padY`.
+Boundary lines span the strings from top to bottom; string lines span the boundaries from the nut, or boundary 0, to the last.
+Beneath the board, after `fretLabelGap`, is one row of fret labels, and the frame ends at their bottom edge.
+String labels are right-aligned to `x = L − stringLabelGap` and centered on their string's `y`, as in tablature.
 
-- Boundary lines span `y` from `padY` to `padY + B`; string lines span `x` from `L` to the frame width.
 - `padY` exists for the same reason as in tablature: a dot, an open disc or a label centered on the first string would otherwise extend above the frame.
   It is half the tallest thing drawn on a string line, plus `clearance`.
 - Fret labels sit **beneath each fret gap**, not beneath each boundary line, so a label is directly under the dots it applies to.
@@ -640,47 +618,26 @@ The source above supplies all six; a source supplying none renders `e B G D A E`
 
 ### Fretboard render settings
 
-*Illustrative after M6. Authoritative: `src/core/settings.ts`.*
+Settings are per-parent-frame and stored with the ASCII source as plugin data on the parent frame; see [Persistence and re-edit](#persistence-and-re-edit).
 
-Settings are per-parent-frame and stored with the ASCII source as plugin data on the parent frame.
+Six are user-configurable: `fretGapWidth`, the width of each drawn fret; `stringGap`; `strokeWeight`, for strings and fret boundaries alike; `fontSize`, which governs both string labels and fret labels; and `leadingFrets` and `trailingFrets`, which buffer the [fret window](#fret-window).
+Their defaults and ranges are in `src/core/settings.ts`, which is also where the UI reads the `min`, `max` and `step` for its inputs.
+`leadingFrets` and `trailingFrets` count frets, so they are whole numbers; see [Settings validation](#settings-validation).
 
-| Setting | Meaning | Default | Range |
-| --- | --- | --- | --- |
-| `fretGapWidth` | Width of each drawn fret | `36` | 8–200 |
-| `stringGap` | Vertical gap between strings | `16` | 4–200 |
-| `strokeWeight` | Stroke weight of strings and fret boundaries | `1` | 0.25–8 |
-| `fontSize` | Font size of all text: string labels and fret labels | `12` | 4–200 |
-| `leadingFrets` | Frets drawn before the lowest source fret | `1` | 0–24 |
-| `trailingFrets` | Frets drawn after the highest source fret | `1` | 0–24 |
-
-Fixed for v1, not user-configurable:
-
-| Constant | Value |
-| --- | --- |
-| `clearance` | `2` |
-| `minFrets` | `4` |
-| `maxFret` | `30` — the highest fret a source may name, and the highest the window may reach |
-| `nutStrokeWeight` | `4` |
-| `dotDiameter` | `10` |
-| `fretLabelGap` | `6` |
-| `stringLabelGap` | `8` |
-| `defaultTunings` | 4, 6 and 7 strings |
-| `knockoutFill` | `#FFFFFF`, the open disc's fill |
-| `inkColor` | `#000000` |
-| `fontFamily` | `Roboto Mono` Regular, falling back to `Roboto` Regular |
-
-Both the ASCII source and the render settings are stored as plugin data on the parent frame; see [Persistence and re-edit](#persistence-and-re-edit).
+Everything else is fixed for v1 and lives in the same module: `clearance`; `minFrets`, the narrowest window; `maxFret`, the highest fret a source may name and the highest the window may reach; `nutStrokeWeight`; `dotDiameter`; `fretLabelGap`; `stringLabelGap`; `defaultTunings`; `knockoutFill`, the open disc's fill; `inkColor`; and `fontFamily`, shared with tablature.
 
 ### Fretboard test cases
 
-*Illustrative after M6. Authoritative: `src/core/fretboard/*.test.ts`.*
+These sources are **normative inputs**: the tests use them by name, and `src/core/fretboard/fixtures.ts` is extracted from the fenced blocks in this section and in [ASCII input](#ascii-input) and [Fretboard string labels](#fretboard-string-labels) verbatim.
 
-**TC-F1 — scale shape.** The G-major scale source above at the default `leadingFrets` and `trailingFrets` of 1: source frets 2–5, so window 1–6, seven boundary lines, six string lines, fifteen dots, six fret labels, six string labels defaulted to `e B G D A E`, no open markers, nut drawn at boundary 0 because `lo` is 1.
+What each case *asserts* — markers, windows, pixel positions, node counts — lives in `src/core/fretboard/parse.test.ts` and `layout.test.ts`, and those numbers were deleted from this document when M6 landed.
 
-**TC-F2 — open chord.** The G-major chord source above at the default 1 / 1: source frets 2–3, so window 1–4, four dots, two open-string discs superimposed on the nut, and six default string labels to the left of the board.
+**TC-F1 — scale shape.** The G-major scale source in [ASCII input](#ascii-input) at the default settings: a window that reaches the nut because the shape sits within a fret of it, one dot per fretted note, no open markers, and string labels defaulted.
 
-**TC-F3 — source-supplied fretboard labels.** The labeled source above at the default 1 / 1: window 1–4, six label text nodes taken from the source rather than defaulted, and every boundary, string, dot and open marker offset right by `L`.
-Assert that the two open-string discs are centered at `x = L`, on the nut, and that each carries both a `knockoutFill` fill and an `inkColor` stroke — without the fill the nut line would run through the disc, and without the stroke it would be invisible.
+**TC-F2 — open chord.** The G-major chord source in [ASCII input](#ascii-input) at the default settings: dots for the fretted strings, open-string discs superimposed on the nut, and default string labels to the left of the board.
+
+**TC-F3 — source-supplied fretboard labels.** The labeled source in [Fretboard string labels](#fretboard-string-labels): TC-F2's chord, with label text nodes taken from the source rather than defaulted, and every boundary, string, dot and open marker offset right by `L`.
+The open-string discs are centered at `x = L`, on the nut, and each carries both a `knockoutFill` fill and an `inkColor` stroke — without the fill the nut line would run through the disc, and without the stroke it would be invisible.
 
 **TC-F4 — shifted window, no nut.** A B major scale in 6th position: the G major box of TC-F1 transposed up four semitones, so its lowest root moves from the 3rd fret of the low E string to the 7th.
 Rendered at the default `leadingFrets` and `trailingFrets` of 1.
@@ -694,31 +651,18 @@ Rendered at the default `leadingFrets` and `trailingFrets` of 1.
 7 9
 ```
 
-Source frets run 6–9, so the window is 5–10 and `M` is 6. Because `lo` is not 1, **no nut is drawn**: boundary 0 is an ordinary `Fret Boundary 0` at `strokeWeight`, not a `Nut` at `nutStrokeWeight`.
+Because the window starts at fret 5, **no nut is drawn**: boundary 0 is an ordinary `Fret Boundary 0` at `strokeWeight`, not a `Nut` at `nutStrokeWeight`.
 The source has no `0`, so the rule forcing `lo` to 1 does not fire.
 
 The nut's absence is not a setting here — it falls out of the shape sitting five frets above it.
 To pull the nut into view anyway, a `leadingFrets` of 5 or more would reach it, since the lowest source fret is 6.
 
-Expected output at the default settings.
-The source supplies no labels, so the column holds the standard-tuning defaults and `L` = 15.2:
-
-| Quantity | Value |
-| --- | --- |
-| `padY` | 8, from `max(dotDiameter, fontSize) / 2 + clearance` = 12 / 2 + 2 |
-| String labels | 6, reading `e B G D A E` top to bottom, right-aligned at `x` = 7.2 |
-| Boundary lines | 7, at `x` = 15.2, 51.2, 87.2, 123.2, 159.2, 195.2, 231.2, spanning `y` 8 to 88 |
-| String lines | 6, at `y` = 8, 24, 40, 56, 72, 88, spanning `x` 15.2 to 231.2 |
-| Frame | 231.2 × 106 |
-| Dots | 15 |
-| Fret labels | 6, reading 5, 6, 7, 8, 9, 10, centered at `x` = 33.2, 69.2, 105.2, 141.2, 177.2, 213.2, top edge `y` = 94 |
-
-Also assert:
+The case asserts the full geometry at the default settings, and in particular:
 
 - Fret labels show **absolute fret numbers**, not positions within the window — a shifted window is the only case where those differ, and getting it wrong makes every high-position diagram silently mislabeled.
-- The fret 5 and fret 10 gaps contain no dots; they are the leading and trailing buffer frets.
-- The low E string's two dots sit at `x` = 105.2 and 177.2 on `y` = 88, the frets 7 and 9 that carry the root and the 9th.
-- Nothing is drawn above `y` = 2 or below the frame height of 106: `padY` keeps the first string's ornaments inside the frame.
+- The leading and trailing buffer frets contain no dots.
+- The low E string's two dots sit on frets 7 and 9, which carry the root and the 9th.
+- Nothing is drawn within `clearance` of the top of the frame or below its bottom: `padY` keeps the first string's ornaments inside the frame.
 
 ## Text, fonts and measurement
 
@@ -850,7 +794,7 @@ Settings validation works the same way.
 **Layout is the sandbox's job alone.** The UI never runs layout, never measures text and never precomputes geometry, so there is nothing for the two halves to disagree about.
 Diagnostics are measurement-independent, which is why the UI can predict every `render-failed` without knowing a thing about font metrics.
 
-*Authoritative: `src/core/protocol.ts`, which holds the message union, `Diagram`, `Defaults` and `SelectionState`. Those are tablature-only until M7 widens them to both modes. The fretboard types below are illustrative after M6; the rules beneath the block are normative.*
+*Authoritative: `src/core/protocol.ts`, which holds the message union, `Diagram`, `Defaults` and `SelectionState`. Those are tablature-only until M7 widens them to both modes. The rules below are normative.*
 
 UI to sandbox: `ui-ready`, sent once when the React tree mounts; `render`, carrying a `Diagram` and a target that is either a new frame or an existing frame's id; and `close`.
 
@@ -858,19 +802,7 @@ Sandbox to UI: `init`, the reply to `ui-ready`, carrying how the plugin was laun
 
 `SelectionState` is one of three cases — nothing editable selected, a recognized generated frame, or a generated frame whose `schemaVersion` is newer than this plugin supports — and what each means for the UI is described in [In-place edit flow](#in-place-edit-flow).
 
-Still ahead, and the reason `Diagram` is a union rather than a loose mode-and-settings pair:
-
-```ts
-interface FretboardSettings {
-  fretGapWidth: number; stringGap: number; strokeWeight: number;
-  fontSize: number; leadingFrets: number; trailingFrets: number;
-}
-
-/** A mode paired with its own settings type, so the two can never mismatch. */
-type ModeSettings =
-  | { mode: "tablature"; settings: TablatureSettings }
-  | { mode: "fretboard"; settings: FretboardSettings };
-```
+Still ahead: M7 pairs each mode with its own settings type in `Diagram`, `TablatureSettings` with `"tablature"` and `FretboardSettings` with `"fretboard"`, so the two can never mismatch.
 
 Rules:
 
@@ -879,7 +811,7 @@ Rules:
   Node ids are not stable across renders, since every child is rebuilt.
 - The UI MUST NOT block its own input on a round trip.
   Validation shown while typing comes from the local parser, not from a sandbox reply.
-- `TablatureSettings` lives in `src/core/settings.ts`, and `FretboardSettings` will join it; adding a setting means editing that module and, until M6, the fretboard table above.
+- `TablatureSettings` and `FretboardSettings` live in `src/core/settings.ts`; adding a setting means editing that module.
   The two modes share no settings type, which is why every message carries a `Diagram` rather than a loose `mode` and `settings` pair — a `"fretboard"` mode can't be paired with tablature settings.
   `ParseError` is defined in `src/core/diagnostics.ts`; see [Error handling and validation](#error-handling-and-validation) for what the diagnostics mean.
 - A receiver narrows on a message's `type` before trusting its payload, since `postMessage` delivers `unknown`.
@@ -890,7 +822,7 @@ Rules:
 Validation runs in the pure parser, so the UI and the sandbox reach identical verdicts.
 A **warning** renders anyway; an **error** blocks rendering.
 
-*The fretboard diagnostic table below is illustrative after M6. Authoritative for the diagnostic type itself: `src/core/diagnostics.ts`; for each mode's codes, that mode's parser and its tests. Severities, and the reasoning for them, are normative.*
+*Authoritative for the diagnostic type itself: `src/core/diagnostics.ts`; for each mode's codes and anchors, that mode's parser and its tests. Severities, and the reasoning for them, are normative.*
 
 A diagnostic carries a severity, a stable kebab-case `code` for tests and i18n, a one-sentence user-facing `message`, and an anchor: a line, and optionally a column and length.
 The anchor is what lets the UI select the offending text when a diagnostic is clicked, so a code that *can* name a precise run should.
@@ -898,7 +830,7 @@ Lines and columns are 0-based — the line within the whole source, the column w
 
 ### Settings validation
 
-Every setting's range is given in its mode's Render settings table.
+Every setting's range is in `src/core/settings.ts`.
 Those ranges are enforced in three places, deliberately overlapping:
 
 1. **The UI control** carries the range as `min`, `max` and `step` on its number input, so the normal path cannot produce an out-of-range value.
@@ -907,6 +839,9 @@ Those ranges are enforced in three places, deliberately overlapping:
 3. **Constraints that span several values** cannot be expressed as a per-field range.
    The fret window is the case that tempted one: its span depends on the source as much as on `leadingFrets` and `trailingFrets`.
    It is resolved by clamping in the [fret window](#fret-window) computation instead of by a diagnostic, which is the better answer wherever a sensible value exists — a setting the user can reach should not be able to produce an error.
+
+A setting that counts something — `leadingFrets` and `trailingFrets`, which count frets — is also rounded to a whole number there, with the same warning, since half a fret would give the [fret window](#fret-window) a fractional edge.
+Settings that measure a distance are not rounded: a fractional `fretGapWidth` is a perfectly good width.
 
 Clamping is a warning rather than an error because it always yields a sensible render.
 A value that cannot be clamped — a missing key, or one whose type is wrong — falls back to that setting's default, as [Schema versioning](#schema-versioning) describes.
@@ -920,7 +855,7 @@ A value that cannot be clamped — a missing key, or one whose type is wrong —
 | `source-too-large` | Source exceeds 50,000 characters | error | Keeps the serialized plugin data well inside Figma's per-key limit |
 | `partial-labels` | Some lines carry a string label and others don't | error | The source disagrees with itself about the strings; nothing is assumed |
 | `unsupported-string-count` | The string count is not 4, 6 or 7 | error | The plugin supports bass, guitar and seven-string guitar; any other count has no default tuning, and the spec's "a label for every string" invariant would not hold |
-| `setting-out-of-range` | A settings value falls outside the range in its Render settings table | warning | Clamped to the nearest end of the range, and the render proceeds |
+| `setting-out-of-range` | A settings value falls outside its range, or a whole-number setting holds a fraction | warning | Clamped to the nearest end of the range, and the render proceeds |
 
 ### Traditional tablature
 
@@ -946,12 +881,14 @@ Hence `leading-blank-line` below — it renders either way, but says what it ass
 
 | Code | Condition | Severity | Behavior |
 | --- | --- | --- | --- |
-| `bad-token` | A token other than a leading string label is not `0` or a positive integer | error | Anchored at the token |
-| `open-with-fret` | A line combines `0` with a fret number | error | A string is either open or fretted |
-| `duplicate-marker` | A line repeats a fret, or repeats `0` | warning | Collapsed to one |
-| `no-frets` | No line carries any marker | error | There is nothing to draw |
-| `leading-blank-line` | The source begins with a blank line | warning | Taken as a markerless first string. A 6-line source with one stray leading newline is a valid 7-string source, so the string-count check cannot catch it |
-| `fret-out-of-range` | A fret number exceeds `maxFret` | error | Past the end of any real neck; the only fret rejection, since the window itself is clamped rather than rejected |
+`src/core/fretboard/parse.ts` and its tests are authoritative for the codes and their anchors; what follows is why each condition is handled as it is.
+
+- A token other than a leading string label that is not `0` or a positive integer is an error at that token. Guessing at `3.5` or `3x` would draw a dot the user didn't write.
+- A line combining `0` with a fret number is an error: a string is either open or fretted.
+- A line repeating a fret, or repeating `0`, is a **warning**, and the repeat is collapsed. Both copies mean the same thing, so there is a sensible render.
+- A source where no line carries any marker is an error, since there is nothing to draw. It stays quiet when a line wrote a marker that failed to parse, which already has its own error.
+- A leading blank line is a **warning**, taken as a markerless first string, because the string-count check cannot catch a stray newline.
+- A fret past `maxFret` is an error, and the only fret rejection: the window itself is clamped rather than rejected.
 
 ### Presentation
 

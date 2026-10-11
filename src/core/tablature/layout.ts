@@ -6,6 +6,7 @@
 // unit test, with no Figma runtime and no screenshots.
 
 import type { Measure } from "../measure";
+import type { LineItem, RectItem, TextItem } from "../scene";
 import {
   clearance,
   defaultTunings,
@@ -15,37 +16,8 @@ import {
 } from "../settings";
 import type { Cell, RowGroup, TablatureParse } from "./parse";
 
-export type SceneItem =
-  | {
-      kind: "line";
-      name: string;
-      x1: number;
-      y1: number;
-      x2: number;
-      y2: number;
-      strokeWeight: number;
-      stroke: string;
-    }
-  | {
-      kind: "rect";
-      name: string;
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-      fill: string;
-    }
-  | {
-      kind: "text";
-      name: string;
-      /** Left edge. Text is never positioned by a centre point. */
-      x: number;
-      /** Top edge, already offset by half the font size. */
-      y: number;
-      characters: string;
-      fontSize: number;
-      fill: string;
-    };
+/** Tablature draws lines and text; `rect` is kept for the renderer's sake. */
+export type SceneItem = LineItem | RectItem | TextItem;
 
 export interface RowScene {
   name: string;

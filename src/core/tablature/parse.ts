@@ -4,7 +4,12 @@
 // pure and geometry-free: the same parse result rendered with different
 // settings differs only in spacing.
 
-import { bySourcePosition, type DiagnosticCode, type ParseError } from "../diagnostics";
+import {
+  bySourcePosition,
+  sourceGates,
+  type DiagnosticCode,
+  type ParseError,
+} from "../diagnostics";
 
 /** A note cell: what is played on one string at one slot. */
 export interface Cell {
@@ -43,7 +48,6 @@ export interface TablatureParse {
   diagnostics: ParseError[];
 }
 
-const MAX_SOURCE_CHARS = 50_000;
 const MAX_ROW_GROUPS = 64;
 const MAX_SLOTS_PER_ROW = 400;
 const SUPPORTED_STRING_COUNTS: readonly number[] = [4, 6, 7];
@@ -233,28 +237,8 @@ export function parseTablature(source: string): TablatureParse {
   });
 
   // --- Stage A: source gates. None of these leaves anything honest to parse.
-  if (source.trim() === "") {
-    push("empty-source", "Enter some tab to render.", 0);
-  }
-  if (source.length > MAX_SOURCE_CHARS) {
-    push(
-      "source-too-large",
-      `This tab is ${String(source.length)} characters; keep it under ${String(MAX_SOURCE_CHARS)}.`,
-      0,
-    );
-  }
-
+  diagnostics.push(...sourceGates(source));
   const lines = source.split("\n");
-  const tabLine = lines.findIndex((text) => text.includes("\t"));
-  if (tabLine >= 0) {
-    push(
-      "tab-character",
-      "Tab characters make it impossible to tell which notes line up. Use spaces instead.",
-      tabLine,
-      lines[tabLine]?.indexOf("\t") ?? 0,
-      1,
-    );
-  }
 
   if (diagnostics.length > 0) return done(null, []);
 

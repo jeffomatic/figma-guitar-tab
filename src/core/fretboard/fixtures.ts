@@ -1,0 +1,55 @@
+// The test-case sources from the spec's Fretboard diagram section.
+//
+// Extracted from docs/spec.md verbatim rather than retyped, as for tablature.
+// Fretboard sources are only whitespace-delimited, so a mistyped space is less
+// dangerous than a mistyped hyphen -- but a dropped token silently changes the
+// shape, and the copies must stay byte-identical either way.
+//
+// TC-F1 and TC-F2 use the two examples in the spec's ASCII input section, and
+// TC-F3 the example in Fretboard string labels; TC-F4 has its own block.
+
+/**
+ * Strip the newline after the opening backtick and the one before the closing
+ * one, so a fixture is exactly the lines written between them.
+ */
+const source = (text: string): string => text.replace(/^\n/, "").replace(/\n$/, "");
+
+/** TC-F1 — scale shape. A G-major scale layout. */
+export const TCF1 = source(`
+2 3
+3 5
+2 4 5
+2 4 5
+2 3 5
+3 5
+`);
+
+/** TC-F2 — open chord. A G-major open chord. */
+export const TCF2 = source(`
+3
+3
+0
+0
+2
+3
+`);
+
+/** TC-F3 — source-supplied fretboard labels. TC-F2's chord, labeled. */
+export const TCF3 = source(`
+e 3
+B 3
+G 0
+D 0
+A 2
+E 3
+`);
+
+/** TC-F4 — shifted window, no nut. TC-F1's box moved up to B major. */
+export const TCF4 = source(`
+6 7
+7 9
+6 8 9
+6 8 9
+6 7 9
+7 9
+`);
