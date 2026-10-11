@@ -64,11 +64,11 @@ export const tablatureLabels: Record<keyof TablatureSettings, string> = {
 
 // --- Fixed for v1, not user-configurable.
 
-/** Padding around a knockout: beside the text, and beyond the line's thickness. */
+/** Space between a note cell's text and the string line on either side of it. */
 export const clearance = 2;
 /** Space between the string-label column and the string lines. */
 export const stringLabelGap = 8;
-/** Fill of the rectangles that hide a string line behind text. Assumes a white page. */
+/** Fill of the fretboard's open-string disc, from M7. Assumes a white page. */
 export const knockoutFill = "#FFFFFF";
 /** Lines and text. */
 export const inkColor = "#000000";

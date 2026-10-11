@@ -10,7 +10,6 @@ import {
   clearance,
   defaultTunings,
   inkColor,
-  knockoutFill,
   stringLabelGap,
   type TablatureSettings,
 } from "../settings";
@@ -52,7 +51,7 @@ export interface RowScene {
   name: string;
   width: number;
   height: number;
-  /** In z-order: string labels, string lines, knockouts, cell text. */
+  /** In z-order: string labels, string segments, measure breaks, cell text. */
   items: SceneItem[];
 }
 
@@ -178,25 +177,42 @@ function layoutRow(
     });
   });
 
-  // One unbroken line per string. Where text would collide with it, a knockout
-  // hides it -- the line is never cut into segments.
+  // Note slots are numbered among themselves, so a measure break between two of
+  // them doesn't advance the slot number: a layer name should read the way a
+  // player counts notes, not the way the array is indexed.
+  const noteSlots = slots.filter((slot) => !slot.isBreak);
+
+  // Each string is the segments left over once every cell on it has cut its
+  // gap. A gap is sized from the cell's own width, not the slot's, so a narrow
+  // cell in a wide slot cuts only itself, and a string with no cell in a slot
+  // runs straight through it. Nothing is drawn in a gap, so the background
+  // shows through whatever colour it is.
   for (let index = 0; index < strings; index++) {
-    items.push({
-      kind: "line",
-      name: `String ${String(index)}`,
-      x1: openX,
-      y1: stringY(index),
-      x2: closeX,
-      y2: stringY(index),
-      strokeWeight,
-      stroke: inkColor,
+    const gaps: Span[] = [];
+    for (const slot of noteSlots) {
+      for (const { cell, width: cellWidth } of slot.cells) {
+        if (cell.stringIndex !== index) continue;
+        gaps.push([slot.x - clearance, slot.x + cellWidth + clearance]);
+      }
+    }
+
+    stringSegments(openX, closeX, gaps).forEach(([x1, x2], k) => {
+      items.push({
+        kind: "line",
+        name: `String ${String(index)} Segment ${String(k)}`,
+        x1,
+        y1: stringY(index),
+        x2,
+        y2: stringY(index),
+        strokeWeight,
+        stroke: inkColor,
+      });
     });
   }
 
-  // Vertical, joining the top string's line to the bottom's. Grouped with the
-  // structural lines rather than the text: a break holds no cells, so no
-  // knockout ever covers one. Numbered among breaks, including the two the row
-  // adds itself, so the names read 0, 1, 2 rather than skipping slot indices.
+  // Vertical, joining the top string's line to the bottom's. Numbered among
+  // breaks, including the two the row adds itself, so the names read 0, 1, 2
+  // rather than skipping slot indices.
   //
   // Each one overshoots the outermost string lines by half a stroke. Ending it
   // on `stringY(0)` would end it at the *centre* of the top string's stroke,
@@ -219,30 +235,6 @@ function layoutRow(
     });
   });
 
-  // Only as tall as the line it hides, not as tall as the text: 5px at the
-  // defaults rather than 12. Sized from the cell's own width, not the slot's,
-  // so a narrow cell in a wide slot hides only itself.
-  //
-  // Note slots are numbered among themselves, so a measure break between two of
-  // them doesn't advance the slot number: a layer name should read the way a
-  // player counts notes, not the way the array is indexed.
-  const noteSlots = slots.filter((slot) => !slot.isBreak);
-
-  const knockoutHeight = strokeWeight + 2 * clearance;
-  noteSlots.forEach((slot, n) => {
-    for (const { cell, width: cellWidth } of slot.cells) {
-      items.push({
-        kind: "rect",
-        name: `Knockout Slot ${String(n)} String ${String(cell.stringIndex)}`,
-        x: slot.x - clearance,
-        y: stringY(cell.stringIndex) - knockoutHeight / 2,
-        width: cellWidth + 2 * clearance,
-        height: knockoutHeight,
-        fill: knockoutFill,
-      });
-    }
-  });
-
   // Left-aligned at the slot's edge: every cell of one chord begins in the same
   // character column in the source, and centring would stagger them whenever a
   // slot mixes widths.
@@ -261,4 +253,33 @@ function layoutRow(
   });
 
   return { name: `Row ${String(rowIndex)}`, width, height, items };
+}
+
+/** A horizontal extent, `[left, right]`. */
+type Span = readonly [number, number];
+
+/**
+ * Two gaps closer than this are treated as touching. It exists only to absorb
+ * floating-point noise from measurement, so that gaps meeting exactly -- which
+ * `noteGap` at its minimum produces -- leave no sliver of line between them.
+ */
+const epsilon = 1e-6;
+
+/**
+ * The parts of `[from, to]` that no gap covers, left to right.
+ *
+ * Gaps are merged where they overlap or touch before the complement is taken,
+ * so no zero-length segment is ever emitted. They are not clamped to the row:
+ * every gap sits at least `noteGap - clearance` inside the nearest measure
+ * break, so none can reach either end.
+ */
+function stringSegments(from: number, to: number, gaps: Span[]): Span[] {
+  const segments: Span[] = [];
+  let x = from;
+  for (const [left, right] of [...gaps].sort((a, b) => a[0] - b[0])) {
+    if (left - x > epsilon) segments.push([x, left]);
+    x = Math.max(x, right);
+  }
+  if (to - x > epsilon) segments.push([x, to]);
+  return segments;
 }

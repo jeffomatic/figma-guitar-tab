@@ -13,7 +13,7 @@
 // reuse. Nothing derived: a comment restating what a test asserts would go stale
 // the moment that assertion changed, and nothing would catch it.
 //
-// TC-8 has no source of its own: it re-asserts TC-7's, as knockout rectangles.
+// TC-8 has no source of its own: it re-asserts TC-7's, as string segments.
 
 /**
  * Strip the newline after the opening backtick and the one before the closing
