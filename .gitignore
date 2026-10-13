@@ -1,2 +1,4 @@
 node_modules/
 dist/
+.DS_Store
+DO_NOT_COMMIT*
