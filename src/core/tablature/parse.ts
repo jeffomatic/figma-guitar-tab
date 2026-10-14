@@ -133,7 +133,10 @@ function tokenize(
   playableStart: number,
   push: Push,
 ): { cells: RawCell[]; breaks: RawBreak[] } {
-  const playable = line.text.slice(playableStart);
+  // Trailing whitespace carries no meaning, and keeping it would put something
+  // to the right of a closing break -- `-1-| ` would read as an unflanked pipe.
+  // Trimming covers a stray `\r` from CRLF line endings too.
+  const playable = line.text.slice(playableStart).trimEnd();
   const cells: RawCell[] = [];
   const breaks: RawBreak[] = [];
 

@@ -130,6 +130,12 @@ describe("tablature structure", () => {
     expect(parseTablature(bracketed)).toEqual(parseTablature(bare));
   });
 
+  it("trailing whitespace changes nothing, even after a closing break", () => {
+    const clean = "|-1-|\n|---|\n|---|\n|---|\n|---|\n|---|";
+    const padded = "|-1-| \n|---|  \n|---|   \n|---|\r\n|---| \n|---|";
+    expect(parseTablature(padded)).toEqual(parseTablature(clean));
+  });
+
   it("no slot holds two cells on one string", () => {
     for (const source of [TC1, TC2, TC3, TC4, TC5, TC6, TC7, TC9]) {
       for (const group of parseTablature(source).rows) {
