@@ -820,7 +820,7 @@ Diagnostics are measurement-independent, which is why the UI can predict every `
 
 UI to sandbox: `ui-ready`, sent once when the React tree mounts; `render`, carrying a `Diagram` and a target that is either a new frame or an existing frame's id; and `resize`, carrying the form's rendered height, sent whenever it changes so the window hugs the form.
 
-Sandbox to UI: `init`, the reply to `ui-ready`, carrying how the plugin was launched, the per-user defaults and the current selection; `selection`, pushed on every selection change; and `render-done` or `render-failed`, the latter carrying a user-facing message and the offending diagnostics.
+Sandbox to UI: `init`, the reply to `ui-ready`, carrying how the plugin was launched, the per-user defaults and the current selection; `selection`, pushed on every selection change; and `render-done` or `render-failed`, the latter carrying a user-facing message and the offending error diagnostics, if any.
 
 `SelectionState` is one of three cases — nothing editable selected, a recognized generated frame, or a generated frame whose `schemaVersion` is newer than this plugin supports — and what each means for the UI is described in [In-place edit flow](#in-place-edit-flow).
 
@@ -920,6 +920,10 @@ Hence `leading-blank-line` below — it renders either way, but says what it ass
 - Settings controls carry their documented range as input attributes, which makes out-of-range values unreachable by normal use without being the only thing preventing them; see [Settings validation](#settings-validation).
 - The sandbox re-validates on `render` and replies `render-failed` if any error is present, rather than trusting the UI.
   A `render-failed` that the UI did not predict is a bug, and the message says so.
+- The one `render-failed` the UI cannot predict, and which is not a bug, is an `existing` target that is no longer renderable.
+  Between selecting a frame and clicking render, the frame may have been deleted, or changed so it is no longer a generated frame this version can draw into.
+  The sandbox then refuses rather than quietly creating a new frame elsewhere, and replies with a message saying the diagram is gone and suggesting the user deselect it to create a new one.
+  This reply carries no diagnostics, since nothing is wrong with the source.
 - Figma's own `figma.notify` is used only for outcomes the user sees outside the iframe, such as a successful render or an unreadable selection.
 
 ## Non-goals
