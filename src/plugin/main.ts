@@ -163,10 +163,6 @@ async function handle(data: unknown): Promise<void> {
       figma.ui.resize(uiWidth, clamped);
       return;
     }
-
-    case "close":
-      figma.closePlugin();
-      return;
   }
 }
 

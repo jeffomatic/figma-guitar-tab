@@ -79,7 +79,6 @@ Note the inversion in the first row below: *tab* is a poor spec term because thi
 | The source field | ASCII tab | `source` | ASCII tab |
 | The folded section holding a mode's settings | — | — | Options |
 | Drawing the diagram | render | `"render"` | Render |
-| Dismissing the plugin | — | `"close"` | Close |
 
 Within this document, **tablature** always means the notation and **UI tab** always means the control in the plugin's interface.
 Unqualified "tab" is avoided except in the established phrase *ASCII tab*, which names the source format.
@@ -813,7 +812,7 @@ Diagnostics are measurement-independent, which is why the UI can predict every `
 
 *Authoritative: `src/core/protocol.ts`, which holds the message union, `Diagram`, `Defaults` and `SelectionState`. The rules below are normative.*
 
-UI to sandbox: `ui-ready`, sent once when the React tree mounts; `render`, carrying a `Diagram` and a target that is either a new frame or an existing frame's id; `resize`, carrying the form's rendered height, sent whenever it changes so the window hugs the form; and `close`.
+UI to sandbox: `ui-ready`, sent once when the React tree mounts; `render`, carrying a `Diagram` and a target that is either a new frame or an existing frame's id; and `resize`, carrying the form's rendered height, sent whenever it changes so the window hugs the form.
 
 Sandbox to UI: `init`, the reply to `ui-ready`, carrying how the plugin was launched, the per-user defaults and the current selection; `selection`, pushed on every selection change; and `render-done` or `render-failed`, the latter carrying a user-facing message and the offending diagnostics.
 

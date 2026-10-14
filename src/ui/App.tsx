@@ -198,16 +198,7 @@ export function App() {
         )}
       </OptionsFold>
 
-      <div className="flex items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            post({ type: "close" });
-          }}
-          className="rounded px-3 py-1.5 text-neutral-600 hover:bg-neutral-100"
-        >
-          Close
-        </button>
+      <div className="flex items-center justify-end">
         <button
           type="button"
           disabled={blocked}

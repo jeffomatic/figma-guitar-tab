@@ -42,8 +42,7 @@ export type UiMessage =
   | { type: "ui-ready" }
   | { type: "render"; diagram: Diagram; target: RenderTarget }
   /** The form's rendered height in CSS pixels, so the window can hug it. */
-  | { type: "resize"; height: number }
-  | { type: "close" };
+  | { type: "resize"; height: number };
 
 /** sandbox -> UI. */
 export type SandboxMessage =
@@ -55,7 +54,7 @@ export type SandboxMessage =
   /** Rendering was refused or failed; `message` is user-facing. */
   | { type: "render-failed"; message: string; errors: ParseError[] };
 
-const uiMessageTypes = new Set<string>(["ui-ready", "render", "resize", "close"]);
+const uiMessageTypes = new Set<string>(["ui-ready", "render", "resize"]);
 const sandboxMessageTypes = new Set<string>(["init", "selection", "render-done", "render-failed"]);
 
 function discriminantOf(data: unknown): string | null {
