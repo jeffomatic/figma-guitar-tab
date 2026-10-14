@@ -224,7 +224,7 @@ export function App() {
                   : { kind: "new" },
             });
           }}
-          className="rounded bg-neutral-900 px-3 py-1.5 font-medium text-white disabled:bg-neutral-300"
+          className="rounded bg-blue-600 px-3 py-1.5 font-medium text-white enabled:hover:bg-blue-700 disabled:bg-blue-300"
         >
           Render
         </button>
