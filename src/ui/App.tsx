@@ -45,11 +45,6 @@ const examplesUrls: Record<Mode, string> = {
   fretboard: `${examplesDoc}#fretboard`,
 };
 
-const placeholders: Record<Mode, string> = {
-  tablature: "e|-------\nB|---3---\nG|-------",
-  fretboard: "3\n3\n0\n0\n2\n3",
-};
-
 export function App() {
   // Each mode keeps its own source and settings, so switching tabs never loses
   // what the other one holds.
@@ -170,7 +165,6 @@ export function App() {
 
       <SourceField
         value={source}
-        placeholder={placeholders[mode]}
         examplesUrl={examplesUrls[mode]}
         onChange={setSource}
         textareaRef={textareaRef}

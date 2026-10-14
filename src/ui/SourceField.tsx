@@ -2,7 +2,6 @@ import { useId, type RefObject } from "react";
 
 interface Props {
   value: string;
-  placeholder: string;
   /** This mode's section of the examples doc. */
   examplesUrl: string;
   onChange: (value: string) => void;
@@ -10,7 +9,7 @@ interface Props {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
 }
 
-export function SourceField({ value, placeholder, examplesUrl, onChange, textareaRef }: Props) {
+export function SourceField({ value, examplesUrl, onChange, textareaRef }: Props) {
   const id = useId();
 
   // Not a wrapping <label>: a link inside one would also focus the textarea.
@@ -38,7 +37,6 @@ export function SourceField({ value, placeholder, examplesUrl, onChange, textare
         }}
         spellCheck={false}
         rows={6}
-        placeholder={placeholder}
         className="resize-y rounded-md bg-white p-2 font-mono text-xs leading-snug whitespace-pre shadow-xs ring-1 ring-neutral-300 transition-shadow ring-inset outline-none hover:ring-neutral-400 focus:ring-2 focus:ring-neutral-900"
       />
     </div>
