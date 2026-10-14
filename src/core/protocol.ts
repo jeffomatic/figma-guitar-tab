@@ -41,6 +41,8 @@ export type UiMessage =
   /** Sent once when the React tree mounts; prompts an init reply. */
   | { type: "ui-ready" }
   | { type: "render"; diagram: Diagram; target: RenderTarget }
+  /** The form's rendered height in CSS pixels, so the window can hug it. */
+  | { type: "resize"; height: number }
   | { type: "close" };
 
 /** sandbox -> UI. */
@@ -53,7 +55,7 @@ export type SandboxMessage =
   /** Rendering was refused or failed; `message` is user-facing. */
   | { type: "render-failed"; message: string; errors: ParseError[] };
 
-const uiMessageTypes = new Set<string>(["ui-ready", "render", "close"]);
+const uiMessageTypes = new Set<string>(["ui-ready", "render", "resize", "close"]);
 const sandboxMessageTypes = new Set<string>(["init", "selection", "render-done", "render-failed"]);
 
 function discriminantOf(data: unknown): string | null {

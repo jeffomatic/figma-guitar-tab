@@ -812,7 +812,7 @@ Diagnostics are measurement-independent, which is why the UI can predict every `
 
 *Authoritative: `src/core/protocol.ts`, which holds the message union, `Diagram`, `Defaults` and `SelectionState`. The rules below are normative.*
 
-UI to sandbox: `ui-ready`, sent once when the React tree mounts; `render`, carrying a `Diagram` and a target that is either a new frame or an existing frame's id; and `close`.
+UI to sandbox: `ui-ready`, sent once when the React tree mounts; `render`, carrying a `Diagram` and a target that is either a new frame or an existing frame's id; `resize`, carrying the form's rendered height, sent whenever it changes so the window hugs the form; and `close`.
 
 Sandbox to UI: `init`, the reply to `ui-ready`, carrying how the plugin was launched, the per-user defaults and the current selection; `selection`, pushed on every selection change; and `render-done` or `render-failed`, the latter carrying a user-facing message and the offending diagnostics.
 

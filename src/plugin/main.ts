@@ -22,7 +22,12 @@ import { renderFretboard, renderTablature } from "./render";
 
 const defaultsKey = (mode: Mode): string => `defaults:${mode}`;
 
-figma.showUI(__html__, { width: 420, height: 620 });
+// The width is fixed; the height is a first guess that the UI corrects as soon
+// as it has laid out its form, and again whenever the form changes size.
+const uiWidth = 420;
+const uiHeight = { initial: 480, min: 120, max: 900 };
+
+figma.showUI(__html__, { width: uiWidth, height: uiHeight.initial });
 
 function reply(message: SandboxMessage): void {
   figma.ui.postMessage(message);
@@ -148,6 +153,16 @@ async function handle(data: unknown): Promise<void> {
     case "render":
       await render(message.diagram, message.target);
       return;
+
+    case "resize": {
+      // Clamped, since a message is `unknown` until narrowed and a runaway
+      // diagnostic list shouldn't push the window off the screen.
+      const { height } = message;
+      if (!Number.isFinite(height)) return;
+      const clamped = Math.min(uiHeight.max, Math.max(uiHeight.min, Math.ceil(height)));
+      figma.ui.resize(uiWidth, clamped);
+      return;
+    }
 
     case "close":
       figma.closePlugin();

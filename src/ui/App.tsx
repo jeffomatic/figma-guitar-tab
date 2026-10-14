@@ -52,6 +52,21 @@ export function App() {
   const [failure, setFailure] = useState<string | null>(null);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+
+  // The window hugs the form. Observed rather than computed, so a tab switch, a
+  // diagnostic appearing, or the textarea being dragged taller all resize it.
+  useEffect(() => {
+    const node = mainRef.current;
+    if (!node) return;
+    const observer = new ResizeObserver(() => {
+      post({ type: "resize", height: node.getBoundingClientRect().height });
+    });
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     /**
@@ -132,7 +147,9 @@ export function App() {
   };
 
   return (
-    <main className="flex h-screen flex-col gap-3 p-3 font-sans text-xs text-neutral-900">
+    // Sized by its content, never by the window: the window follows this
+    // element, so filling the window would leave nothing to measure.
+    <main ref={mainRef} className="flex flex-col gap-3 p-3 font-sans text-xs text-neutral-900">
       <ModeTabs
         mode={mode}
         onChange={(next) => {
@@ -178,7 +195,7 @@ export function App() {
         />
       )}
 
-      <div className="mt-auto flex items-center justify-end gap-2">
+      <div className="flex items-center justify-end gap-2">
         <button
           type="button"
           onClick={() => {
