@@ -66,7 +66,7 @@ Note the inversion in the first row below: *tab* is a poor spec term because thi
 | Fretboard mode | fretboard diagram | `"fretboard"` | **Fretboard** |
 | Gap between a cell and the next slot | note gap | `noteGap` | Note spacing |
 | Vertical gap between strings | — | `stringGap` | String spacing |
-| String line stroke weight | — | `strokeWeight` | String weight |
+| Stroke weight of string lines, and on the fretboard also of fret boundaries and marker outlines | — | `strokeWeight` | String weight |
 | Text size | — | `fontSize` | Text size |
 | Vertical gap between rows | — | `rowGap` | Row spacing |
 | Width of a drawn fret | fret gap | `fretGapWidth` | Fret width |
@@ -342,6 +342,7 @@ Only the first token can be a label; a token anywhere else that is not a fret or
 A string is open, fretted or muted, and only one of them: a `0` MUST NOT be combined with a fret number, and an `x` MUST NOT be combined with a `0` or a fret number.
 Tokens on a line may appear in any order; duplicates are collapsed.
 The number of lines is the string count, which MUST be 4, 6 or 7 (`unsupported-string-count`).
+What the parser does with duplicates, out-of-range frets and blank lines is in [Error handling and validation](#fretboard-diagram-1).
 
 For example, a G-major scale layout might look like this:
 
@@ -526,6 +527,8 @@ Both modes render into a parent container frame that stores its own ASCII source
 *Authoritative: `src/core/pluginData.ts` for the keys and the decoding, `src/plugin/pluginData.ts` for the I/O.*
 
 Written with `node.setPluginData` on the parent frame — **private** plugin data, not shared plugin data.
+A frame stores four keys: `schemaVersion`, `mode`, `source` and `settings`.
+They live in users' documents, so they are a contract: renaming, removing or reinterpreting one needs a schema version bump.
 Figma stores only strings, so the schema version is a decimal string, the source is stored verbatim, and the settings are JSON.
 
 A frame is recognized as plugin-generated when its schema version and mode are both present and readable, **and it carries a source**.
@@ -619,6 +622,7 @@ Diagnostics are measurement-independent, which is why the UI can predict every `
 *Authoritative: `src/core/protocol.ts`, which holds the message union, `Diagram`, `Defaults` and `SelectionState`. The rules below are normative.*
 
 UI to sandbox: `ui-ready`, sent once when the React tree mounts; `render`, carrying a `Diagram` and a target that is either a new frame or an existing frame's id; and `resize`, carrying the form's rendered height, sent whenever it changes so the window hugs the form.
+The sandbox keeps the window's width fixed and sets its height from that message, clamped so a long list of diagnostics can't push it off screen.
 
 Sandbox to UI: `init`, the reply to `ui-ready`, carrying how the plugin was launched, the per-user defaults and the current selection; `selection`, pushed on every selection change; and `render-done` or `render-failed`, the latter carrying a user-facing message and the offending error diagnostics, if any.
 
