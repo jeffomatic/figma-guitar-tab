@@ -16,6 +16,7 @@ import {
 import { post, subscribe } from "./bridge";
 import { DiagnosticList } from "./DiagnosticList";
 import { ModeTabs } from "./ModeTabs";
+import { OptionsFold } from "./OptionsFold";
 import { SettingsFields } from "./SettingsFields";
 import { SourceField } from "./SourceField";
 
@@ -177,23 +178,25 @@ export function App() {
 
       {failure !== null && <p className="rounded bg-red-100 px-2 py-1 text-red-900">{failure}</p>}
 
-      {mode === "tablature" ? (
-        <SettingsFields
-          order={tablatureOrder}
-          values={tablatureSettings}
-          ranges={tablatureRanges}
-          labels={tablatureLabels}
-          onChange={setTablatureSettings}
-        />
-      ) : (
-        <SettingsFields
-          order={fretboardOrder}
-          values={fretboardSettings}
-          ranges={fretboardRanges}
-          labels={fretboardLabels}
-          onChange={setFretboardSettings}
-        />
-      )}
+      <OptionsFold>
+        {mode === "tablature" ? (
+          <SettingsFields
+            order={tablatureOrder}
+            values={tablatureSettings}
+            ranges={tablatureRanges}
+            labels={tablatureLabels}
+            onChange={setTablatureSettings}
+          />
+        ) : (
+          <SettingsFields
+            order={fretboardOrder}
+            values={fretboardSettings}
+            ranges={fretboardRanges}
+            labels={fretboardLabels}
+            onChange={setFretboardSettings}
+          />
+        )}
+      </OptionsFold>
 
       <div className="flex items-center justify-end gap-2">
         <button

@@ -77,6 +77,7 @@ Note the inversion in the first row below: *tab* is a poor spec term because thi
 | Leading and trailing frets | fret window | `leadingFrets`, `trailingFrets` | Frets before / after |
 | Boundary between measures | measure break | `"break"` | measure line |
 | The source field | ASCII tab | `source` | ASCII tab |
+| The folded section holding a mode's settings | — | — | Options |
 | Drawing the diagram | render | `"render"` | Render |
 | Dismissing the plugin | — | `"close"` | Close |
 
