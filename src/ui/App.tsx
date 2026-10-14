@@ -37,6 +37,14 @@ const fretboardOrder: (keyof FretboardSettings)[] = [
   "trailingFrets",
 ];
 
+const examplesDoc = "https://github.com/jeffomatic/figma-guitar-tab/blob/main/docs/examples.md";
+
+/** Each mode's section of the examples doc, by its heading's anchor. */
+const examplesUrls: Record<Mode, string> = {
+  tablature: `${examplesDoc}#tab`,
+  fretboard: `${examplesDoc}#fretboard`,
+};
+
 const placeholders: Record<Mode, string> = {
   tablature: "e|-------\nB|---3---\nG|-------",
   fretboard: "3\n3\n0\n0\n2\n3",
@@ -163,6 +171,7 @@ export function App() {
       <SourceField
         value={source}
         placeholder={placeholders[mode]}
+        examplesUrl={examplesUrls[mode]}
         onChange={setSource}
         textareaRef={textareaRef}
       />
