@@ -774,6 +774,12 @@ No other node carries plugin data.
    So editing a frame, then deselecting it, then rendering creates a second frame with the same content — a render always acts on what is selected now.
    The same holds across modes: rendering from the other mode's UI tab while a frame is selected converts that frame to the active mode.
 
+   **Every successful render selects the frame it drew**, new or existing, and that selection change runs through step 1 like any other.
+   The frame now holds readable plugin data, so the selection becomes `editable` and step 3 loads the stored diagram back into the editor.
+   Two consequences follow.
+   A render from create mode leaves the plugin in edit mode, so the next render updates that frame rather than creating another; deselecting is how the user starts a new one.
+   And the editor shows what was stored rather than what was typed: settings come back clamped, so an out-of-range value the user entered is replaced by the value actually rendered.
+
    While an `unsupported-version` frame is selected, **rendering is unavailable** and the render button is disabled.
    The alternative — letting the render fall through to a `new` frame — would answer "I can't edit this one" by silently producing a different diagram somewhere else.
    Deselecting the frame is how the user gets back to creating one.
