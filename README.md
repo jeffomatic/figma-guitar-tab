@@ -1,5 +1,7 @@
 # figma-guitar-tab
 
+[**Use the plugin in your Figma design**](https://www.figma.com/community/plugin/1692295359301122705/guitar-tab)
+
 A Figma plugin for creating guitar tablature and fretboard diagrams in design files.
 
 The plugin converts user-provided ASCII notation into formatted Figma nodes (lines, text, and frames), and stores the source notation alongside render settings so a generated diagram can be re-edited later.
@@ -23,7 +25,7 @@ The string count comes from the number of lines in the source, and any other cou
 | --- | --- |
 | [docs/examples.md](docs/examples.md) | Example sources for both modes, to paste into the plugin. |
 | [docs/spec.md](docs/spec.md) | Normative product specification. The source of truth for behavior. |
-| [AGENTS.md](AGENTS.md) | Engineering conventions for anyone (human or agent) writing code here. |
+| [AGENTS.md](AGENTS.md) | Engineering conventions for agentic code generation. |
 
 ## Getting started
 
