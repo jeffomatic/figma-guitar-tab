@@ -90,13 +90,11 @@ For now, the plugin will only support string lines and note cells, meaning we wi
 
 ### Parsing
 
-Parsing is a pure function from source text to a row/slot structure.
-It is independent of geometry: the same parse result rendered with different settings differs only in spacing.
+Parsing is a pure function from source text to a row/slot structure, independent of geometry: the same parse rendered with different settings differs only in spacing.
 
-**Step 1 — split into rows.** The source is split into *row groups* on blank lines (lines containing only whitespace).
-Runs of consecutive blank lines count as one separator, and leading/trailing blank lines are discarded.
-Each row group holds one line per string, ordered highest-pitched first.
-A row group MUST have 4, 6 or 7 lines (`unsupported-string-count`), and every row group in a source must have the same count, or the rows could not align (`inconsistent-string-count`).
+**Step 1 — split into rows.** The source is split into *row groups* on blank lines; runs of blank lines count as one separator, and leading and trailing ones are discarded.
+Each row group holds one line per string, highest-pitched first.
+A row group MUST have 4, 6 or 7 lines (`unsupported-string-count`), and every row group must have the same count, or the rows could not align (`inconsistent-string-count`).
 
 **Step 2 — split each line into prefix and playable region.** Every line has the form `label? whitespace* playable`:
 
@@ -106,203 +104,88 @@ A row group MUST have 4, 6 or 7 lines (`unsupported-string-count`), and every ro
 | `whitespace` | Any run of whitespace. Required if a `label` is present, optional otherwise. |
 | `playable` | The *playable region*: the rest of the line. It begins with an optional opening measure break — a single `\|` — and then MUST have a `-` before anything else. |
 
-Requiring a hyphen before any note cell is how real-world ASCII tab is written, and it is what makes the label boundary decidable: the playable region starts at the first `-`, or at the single `\|` immediately preceding it.
-A line that doesn't fit the form is a `missing-leading-hyphen` error — `3-5-7` fails, because `3` is not followed by whitespace, so the line neither starts with a hyphen nor carries a terminated label.
-All of `-----`, `|-----`, `e -----`, `e|-----` and `E |-2-` fit. `e| ---` does not: whitespace may precede the opening break but not follow it.
+Requiring a hyphen before any note cell is how real-world ASCII tab is written, and it is what makes the label boundary decidable; a line that doesn't fit is a `missing-leading-hyphen` error.
+Columns are counted from the start of the playable region, so lines whose prefixes differ in width still align.
+Because an opening break sits inside that region, a measure break must appear on every string or none, and an inconsistent one is caught as a misalignment rather than silently shifting a row's columns.
 
-Column indices in step 4 are measured from the first character of the playable region, so lines whose prefixes differ in width (`e |`, `B|`) still align.
-The opening measure break is inside that region rather than part of the prefix, so a line that writes one and a line that doesn't have origins one column apart — which is why a measure break must appear on every string or none, and why an inconsistent one is caught as a misalignment rather than silently shifting a row's columns.
+**Step 3 — tokenize.** Within a playable region, a *note cell* is a maximal run of characters other than `-`, whitespace and `|`.
+Hyphens and spaces only separate cells, which is why hyphenspace collapses, and trailing whitespace is ignored.
+Each cell MUST contain a digit or an `x`/`X`: a digit makes it a fret, and an `x` a muted note, as real-world tab writes them.
+Every other character in a cell is technique notation, preserved verbatim in the rendered text.
 
-**Step 3 — tokenize.** Within a playable region, a *note cell* is a maximal run of characters that are none of: `-`, whitespace, `|`.
-Hyphens and spaces carry no meaning beyond separating cells, which is why hyphenspace collapses.
-A `|` is a measure break, not a separator, and carries the two rules below.
-Each cell MUST contain at least one digit or at least one `x`/`X`; a cell that contains neither is a validation error.
-A digit makes it a fret, and an `x` makes it a muted or dead note — the standard ASCII notation for a string struck without being fretted, which real-world tab uses freely (`-x-x-x-`, a muted strum on every string).
-All other characters in a cell are technique notation and are preserved verbatim in the rendered text, as are the `x` characters themselves.
+A `|` is a measure break.
+It must be flanked by hyphens unless it begins or ends the region (`measure-break-without-hyphens`), and must appear in the same column on every string of the row group (`misaligned-measure-break`), since a break spans the whole row.
+Breaks at the region's edges are **absorbed**: every row is bracketed by an opening and a closing break whether or not the source writes them.
 
-Each `|` in a playable region must satisfy both of:
+**Step 4 — assign slots.** Cells in a row group belong to the same *slot* when they share a **start column**, and each surviving measure break is a slot of its own; slots are ordered by column.
+A note slot is one moment in time: every cell in it is played together.
+A break slot holds no cells and has no width; it exists to take up a position, so the spacing rules give it a gap on each side.
 
-- **It is flanked by hyphens**, on the left and on the right, unless it is the region's first character — an opening break has nothing to its left — or its last, where a closing break has nothing to its right.
-  Otherwise it is a `measure-break-without-hyphens` error, anchored at the pipe. This is what rejects `-12|-`, where the pipe abuts a cell.
-- **Its column carries a `|` on every string in the row group.** A measure break is a boundary across the whole row, so a pipe that only some strings write is a `misaligned-measure-break` error, anchored at each pipe in that column.
+Cells meant to sound together are therefore written flush.
+A cell whose span overlaps a cell in a *different* slot is an `overlapping-cells` error: it would be simultaneous with both and with neither, and no rendering could honor it.
+Deciding slots by start column rather than by overlap is what keeps this rule total, and it means:
 
-A break at the region's first or last column is **absorbed**: every row is bracketed by an opening and a closing break whether or not the source writes one, so writing them changes nothing and omitting them costs nothing. Only breaks between hyphen runs survive into the parse result.
+- A string that is silent for one chord doesn't shift its later cells into the wrong slot, since identity is by column, not by ordinal position.
+- Only slot order reaches the renderer, never absolute columns, so hyphen runs of any length produce identical geometry.
 
-**Step 4 — assign slots.** Each cell has a start column, and a column span `[start, start + length)`, within its playable region.
-Cells in the same row group belong to the same *slot* when they share a **start column**, and each surviving measure break is a slot of its own.
-Slots are ordered by column, interleaving the two kinds.
-A note slot represents one moment in time: every cell in it is played simultaneously.
-A break slot holds no cells and has no width; it exists to take up a position, so that the spacing rules give it a gap on each side.
-
-Cells that are meant to sound together are therefore written flush, and a cell may not straddle the boundary between two slots: a cell whose span overlaps a cell in a *different* slot is an `overlapping-cells` error.
-Cells sharing a start column may overlap freely, since they are one slot already — `10` and `5` beginning at the same column are simply one slot.
-
-The prohibition is what the alignment rule costs, and it is worth seeing the input it rejects:
-
-```
-column:  0123456
-string1: -10-11-     `10` spans [1,3), `11` spans [4,6)
-string2: --2345-     `2345` spans [2,6)
-```
-
-`2345` begins inside `10`'s span and ends inside `11`'s, so it is simultaneous with both and with neither.
-There is no reading of that source a renderer could honor, and the fix is the one the writer meant: pad the lines so the cells line up.
-
-Deciding slots by start column rather than by overlap is what makes the rule total.
-Overlap would have to be transitive to define slots at all, and its transitive closure chains the example above into a single slot holding *two* cells of string 1 — contradicting step 5, and describing a moment in time in which one string is struck twice.
-
-Consequences worth stating explicitly, since they are the cases that break naive implementations:
-
-- Slot identity is decided by **start column, not by ordinal position** within a string.
-  A string that is silent for one chord does not shift its later cells into the wrong slot.
-- A multi-character cell occupies its full column span, so a cell on another string either shares its start column or begins after that span ends — in which case it lands in a **later** slot.
-- Absolute column values never reach the renderer — only slot ordering — so hyphen runs of any length produce identical geometry.
-
-**Step 5 — emit structure.** The parse result is an ordered list of row groups; each row group holds the string labels the source supplied, if any, and its ordered list of slots, note slots and break slots interleaved; each note slot holds at most one cell per string index.
-Filling in default-tuning labels for the strings the source didn't name is a layout concern, not a parsing one, so the parse result records only what was written.
-
-Rendering maps this structure to a parent frame containing one *row frame* per row group.
-Each row frame contains one string line per source line, at even vertical spacing and broken around the cells on it, and one text node per note cell, left-aligned at its slot's left edge and vertically centered on its string's line.
-Slot widths are not uniform — a slot is as wide as its widest cell needs — so slot positions accumulate left to right rather than being a multiple of a fixed pitch.
-Node geometry and defaults are specified in the [tablature render model](#tablature-render-model).
+**Step 5 — emit structure.** The parse result is an ordered list of row groups, each holding the labels the source supplied, if any, and its slots in order; each note slot holds at most one cell per string.
+Default-tuning labels are filled in by layout, not by the parser, so the parse records only what was written.
 
 ### String labels
 
-Every diagram renders a string label per string.
-The source may supply them, and when it doesn't they come from the default tuning for the string count, so a label column is always present.
-
+Every diagram renders a label per string: the source's when it supplies one, otherwise the default tuning for the string count, so a label column is always present.
 These rules are shared with the fretboard diagram, which has its own label syntax (see [Fretboard string labels](#fretboard-string-labels)):
 
-- A label supplied by the source is read verbatim, so any tuning works — `D`, `C#`, `Eb`, or a two-character name.
-- A line that supplies no label gets the **default tuning** for its string count and position, from the table below.
-- A source where some lines carry labels and others don't is a `partial-labels` **error**.
-  Partial labeling means the source disagrees with itself about what the strings are, and the plugin has no basis for guessing which half to trust.
-
-The default tunings are in `src/core/settings.ts`: standard tuning for each supported string count, stored top to bottom so they drop straight into a row's labels.
-
-These three counts are the instruments the plugin supports: four is standard bass tuning, six is standard guitar, and seven adds the conventional low `B` beneath it.
-A source with any other string count is rejected, so every rendered diagram has a default tuning available and a label for every string.
-
-The `label` part of the line grammar in [step 2](#parsing) is the label.
-A prefix of whitespace alone carries no label.
-A leading `|` is an opening measure break, which every row gets regardless, so writing one changes nothing about the result.
-
-Pipes inside the playable region are measure breaks; see [step 3](#parsing).
+- A source label is read verbatim, so any tuning works — `D`, `C#`, `Eb`, or a two-character name.
+- A line that supplies no label gets the default tuning for its position: standard bass, guitar or seven-string tuning, from `src/core/settings.ts`.
+- A source where some lines carry labels and others don't is a `partial-labels` **error**: the source disagrees with itself about what the strings are, and there is no basis for guessing which half to trust.
 
 ### Tablature render model
 
-All lengths are in Figma pixels.
-Symbols below refer to the settings table in [Tablature render settings](#tablature-render-settings).
-Text measurement, fonts and vertical centering are specified once for both modes in [Text, fonts and measurement](#text-fonts-and-measurement).
+Lengths are in Figma pixels, and every formula lives in `src/core/tablature/layout.ts` and its tests.
+Text measurement and fonts are covered once for both modes in [Text, fonts and measurement](#text-fonts-and-measurement).
 
 #### Node tree
 
-The renderer builds a parent frame, which also carries the plugin data, holding one row frame per row group, each holding that row's string labels, string line segments, measure breaks and note-cell text.
+The renderer builds a parent frame, which carries the plugin data, holding one row frame per row group; each row frame holds that row's string labels, string lines, measure breaks and note text.
 
-- The parent frame uses vertical auto-layout with `itemSpacing` = **rowGap**, no padding, and no fill.
-  Row frames are absolutely positioned internally (text overlaps the string lines' band), have no fill, and are resized to their computed extent.
-- Every frame sets `clipsContent = true`, which is also Figma's default.
-  A frame's bounds therefore have to contain its ink, which is what `padY` is for.
-- Every index in a layer name is **0-based**, matching the formulas: `Row 0` is the first row, `String 0` the highest-pitched string, `Slot 2 String 1` the cell on the second string in the third note slot — measure breaks are not counted, so the number reads the way a player counts notes.
-  Numbers that are not indices keep their real values — a fretboard's `Fret Label 7` is fret 7, not the eighth fret drawn.
-- Layer names are for legibility and debugging, not identity: a re-render rebuilds the row frames wholesale rather than diffing them.
-  Persistence and re-edit are specified in [Persistence and re-edit](#persistence-and-re-edit).
-- A newly generated parent frame is **centered on the default location** and left selected: the center of the current viewport, falling back to the origin.
-  Centered, not cornered — a frame whose top-left sat at the center of the view would appear in its lower-right quadrant and usually overflow it.
-  It is appended to the current page, never into whatever node happens to be selected, so placement doesn't depend on the selection.
+- The parent uses vertical auto-layout with `rowGap` between rows.
+  Row frames position their children absolutely, since text overlaps the string lines' band.
+- Layer names are for legibility and debugging, not identity, and indices in them are 0-based.
+  A re-render rebuilds every child rather than diffing.
+- A new parent frame is centered on the viewport, on the current page, and left selected.
 
-#### Coordinates
+#### Layout
 
-Every formula and figure lives in `src/core/tablature/layout.ts` and its tests.
-What follows is the shape of the model and why it is shaped that way.
+A row is a label column of width `L` — the widest label in that row plus `stringLabelGap` — then a band of evenly spaced string lines, with the note cells along them.
+`padY` pads above the first string and below the last, so text centered on an outer string isn't clipped and `rowGap` is the gap the user actually sees.
+The fretboard pads the same way.
 
-A row is a label column, then a band of evenly spaced string lines, then the note cells positioned along them.
-Two quantities are named here because the rest of this document refers to them:
+`L` is computed per row group, so rows whose labels differ in width don't align.
+That is deliberate: the rendering respects what the ASCII says rather than imposing a column width.
 
-- **`L`**, the label column's width: the widest label that row renders, plus `stringLabelGap`. String lines start at `L`.
-- **`padY`**, the vertical padding above the first string and below the last: half the tallest ornament on a string line, plus `clearance`.
+Each row is bracketed by measure breaks, drawn whether or not the source wrote them.
+Each slot advances from the previous one by its widest cell plus `noteGap`, and a break, having no cells, advances by `noteGap` alone.
+Two properties follow, and they are why the obvious `x = n × noteGap` is wrong:
 
-Each slot's left edge accumulates from the previous slot's: a slot advances by its widest cell plus `noteGap`, and a break slot has no cells, so it advances by `noteGap` alone.
-A break therefore sits one full gap from whatever precedes it and one full gap from whatever follows, which is what makes a row of measures read evenly.
-
-The row is **bracketed by measure breaks**: the opening one sits at `L`, where the string lines begin, and the closing one a full gap past the last slot, where they end.
-They are drawn whether or not the source wrote them.
-
-The row's width is the closing break's position plus **a whole stroke weight**.
-Half of one is what the break's ink actually occupies, and it is not enough: it puts the ink's outer edge exactly on the bounds of a frame that clips, where it is cut. A whole weight leaves the ink strictly inside, which is the same slack `padY` leaves vertically with `clearance`. The left edge needs no allowance, since `L` is always wider than the heaviest stroke.
-
-`padY` exists for two reasons, and is not cosmetic:
-
-- Text on the first and last strings is centered on those strings, so without it half of each glyph would fall outside the row frame and be clipped.
-- Because the parent is auto-layout, the visual gap between rows is the distance between row-frame bounds.
-  With `padY` those bounds equal the row's ink, so `rowGap` is the gap the user actually sees; without it, rows would overlap by `fontSize / 2` and the apparent gap would be `rowGap` minus that.
-
-There is no horizontal padding: the leftmost label starts at exactly `x = 0`, and the frame itself is what the user moves.
-The fretboard diagram pads vertically the same way, with the same `clearance`, over its own tallest ornament.
-
-`L` is computed **per row group**, from that row's own labels.
-Row groups whose labels differ in width therefore start their string lines at different `x`, and the rows do not align with each other.
-That is deliberate: the rendering respects what the ASCII says, rather than imposing a column width the source didn't ask for.
-
-Two properties of this model are worth stating, because the obvious simpler formula (`x = n × noteGap`) gets both wrong:
-
-- **Slots widen to fit their contents, and the gap stays constant.** The advance is the widest cell's width *plus* `noteGap`, so the whitespace between a cell and the next slot is exactly `noteGap` however wide the cells are.
-  A cell like `2h3p2` is five characters and pushes its slot out by all of them; without that, a long cell overlaps its neighbor's text and its gap swallows the string line under the next slot.
-
-  Treating the setting as a *minimum advance* instead, as in `max(noteGap, cellWidth + minimumGap)`, applies two rules at once, so the whitespace shrinks as cells grow wider and a wide cell nearly touches the next slot.
-  One rule, one gap: the uniformity is what makes a row read as evenly spaced.
-- **Cells are left-aligned, not centered.** Every cell in a slot starts at the same left edge, which is what the ASCII source shows: all cells of one chord begin in the same character column.
-  Centering would stagger them whenever a slot mixes widths — a `10` and a `5` on different strings would no longer line up.
-  Text nodes therefore use left horizontal alignment and are positioned by their left edge, never by a center point.
+- **Slots widen to fit their contents, and the gap stays constant.** The whitespace between a cell and the next slot is exactly `noteGap` however wide the cells are, which is what makes a row read as evenly spaced.
+- **Cells are left-aligned.** All cells of one chord begin in the same character column in the source, and centering would stagger them whenever a slot mixes widths.
 
 #### String lines and gaps
 
-Each string is drawn as **one or more horizontal segments** that together span `x` from the opening measure break to the closing one, as thick as **strokeWeight** in **inkColor**, centred on the string's `y`.
-Wherever a note cell sits on a string, the line stops short of the cell's text and resumes after it, leaving a **gap**.
-Nothing is drawn in a gap, so whatever is behind the diagram shows through: the rendering makes no assumption about the background.
-Each measure break is one **vertical** line at its own `x`, running from the top string's `y` to the bottom string's, as thick as **strokeWeight** in **inkColor** — and overshooting each end by **half a stroke weight**, so that it covers the full thickness of the string lines it meets.
+Each string line stops short of every note cell on it and resumes after, leaving a gap sized from that cell's own text plus `clearance` on each side, not from the width of its slot.
+So a string not played in a slot runs straight through it, and a narrow cell in a wide slot cuts only its own width.
+Nothing is drawn in a gap, so the diagram makes no assumption about its background; an opaque rectangle hiding the line behind each cell would show as bars on anything that isn't white.
 
-**Every line is drawn as a rectangle, not a `LineNode`.** A `LineNode`'s ink does not sit where its geometry says: a rotated one draws off along its length, and a horizontal one does not straddle its `y`. A rectangle's ink fills exactly its bounds, so a line of thickness `w` centred on a coordinate is a rectangle offset by `w / 2` — which is what makes a break meet a string line squarely, since both are then positioned from the same centre line by the same half-thickness. This is a rendering concern: layout emits a line as two endpoints and a thickness, and says nothing about which node draws it.
-A string segment is an ordinary scene line, so the renderer needs nothing new to draw one.
-
-The overshoot is what makes the row's corners clean. A break that stopped at the top string's `y` would stop at the *centre* of that string's stroke, leaving the outer half of its thickness uninked where the two lines meet: a notch at the corner, most visible at the closing break where there is no further line to hide it. Overshooting covers exactly that half. On an interior break it is invisible, running half a stroke past the outer strings and well inside `padY`.
-
-Each note cell cuts one gap, computed from that cell alone: from `clearance` before the cell's left edge to `clearance` past its right edge.
-The right edge comes from **that cell's** measured text, never from the width of the slot it sits in — which is the distinction the properties below depend on.
-A gap has no height of its own: the line is simply absent across it.
-
-A string's segments are the complement of its gaps within the span from the opening break to the closing one:
-
-- Gaps that overlap or touch are merged before the complement is taken, so two gaps never leave a zero-length segment between them.
-- "Touch" is decided with a small tolerance that exists only to absorb floating-point noise from measurement, so two gaps that meet exactly don't leave a sliver.
-  Any segment longer than that is drawn, however short.
-- A gap never reaches a measure break, including the two that bracket the row.
-  Every break sits a full `noteGap` from the nearest cell, so at least `noteGap − clearance` of line separates a gap from a break, and the gap needs no clamping to the row.
-- A string with no cells is a single segment spanning the row.
-
-Segments are named `String i Segment k`, with `k` counted 0-based from the left within each string, and a string that is one segment is still `String i Segment 0`.
-
-Z-order within a row frame is string labels, then string segments, then measure breaks, then cell text.
-Nothing overlaps a string line, so the order hides nothing; it is fixed so that the layer list reads the same way in every render.
-Three properties follow:
-
-- **A string not played during a slot runs straight through it**, because a cell that doesn't exist cuts no gap — even where a long cell on another string has made that slot wide.
-- **A cell narrower than its slot cuts only its own width**, since the gap is sized from the cell's text rather than from the widest cell in the slot.
-- **Consecutive gaps on one string are separated by `noteGap − 2 × clearance` of line.**
-  That is zero only at `noteGap`'s minimum, where the merge rule above turns two gaps into one rather than leaving an empty segment.
-
-Cutting the line, rather than hiding it behind an opaque rectangle under each cell, is what keeps the diagram independent of its background.
-A filled knockout would assume a white background, and show as white bars on Figma's grey canvas or on any frame or artwork that isn't white.
+Measure breaks are vertical lines joining the top and bottom strings, overshooting each by half a stroke so the corners meet cleanly.
+Every line is drawn as a rectangle rather than a `LineNode`, for the reason given in [AGENTS.md](../AGENTS.md).
 
 ### Tablature render settings
 
-Settings are per-parent-frame and stored with the ASCII source as plugin data on the parent frame.
-
-Five are user-configurable: `noteGap`, the whitespace between a note cell and the next slot; `strokeWeight`; `stringGap`; `fontSize`, which governs both string labels and note cells; and `rowGap`.
-`noteGap`'s minimum is what keeps two cells from ever touching, so no separate minimum-gap constant is needed.
-Their defaults and ranges are in `src/core/settings.ts`, which is also where the UI reads the `min`, `max` and `step` for its inputs.
-
-Everything else is fixed for v1 and lives in the same module: `clearance`, the space between a note cell's text and the string line on either side of it; `stringLabelGap`; `inkColor`; `fontFamily`, whose fallback is described in [Fonts and text nodes](#fonts-and-text-nodes); and `defaultTunings`.
+Settings are stored per parent frame, with the source, as plugin data.
+Five are user-configurable: `noteGap`, `stringGap`, `rowGap`, `fontSize` (labels and note cells alike) and `strokeWeight`.
+`noteGap`'s minimum is what keeps two cells from ever touching.
+Defaults, ranges and every fixed constant are in `src/core/settings.ts`, which is also where the UI reads its input ranges.
 
 ### Tablature tests
 
@@ -329,9 +212,7 @@ Each line holds an optional leading string label, then zero or more tokens:
 | `x` or `X` | Don't play this string: it is muted. |
 | *(empty line)* | This string carries no marker. |
 
-A fret token is exactly `0`, or a digit `1`–`9` followed by any number of digits.
-Nothing else parses: `00` has a leading zero, `3.5` is not an integer, `+3` and `3x` carry characters that are not digits.
-Each is a `bad-token` error rather than a value the plugin guesses at.
+A fret token is a plain integer with no leading zero; anything else, such as `00`, `3.5` or `3x`, is a `bad-token` error rather than a value the plugin guesses at.
 
 The **first** whitespace-delimited token on a line is a string label when it does not begin with a digit and is not `x` or `X`.
 So `e 2 3` labels the string `e` and frets 2 and 3, while `3` alone is a fret and `x` alone mutes the string.
@@ -344,27 +225,7 @@ Tokens on a line may appear in any order; duplicates are collapsed.
 The number of lines is the string count, which MUST be 4, 6 or 7 (`unsupported-string-count`).
 What the parser does with duplicates, out-of-range frets and blank lines is in [Error handling and validation](#fretboard-diagram-1).
 
-For example, a G-major scale layout might look like this:
-
-```
-2 3
-3 5
-2 4 5
-2 4 5
-2 3 5
-3 5
-```
-
-A G-major open chord might look like this:
-
-```
-3
-3
-0
-0
-2
-3
-```
+See [examples.md](examples.md) for sample sources.
 
 ### Fret window
 
@@ -376,99 +237,42 @@ It is computed from the source frets — tokens of `1` or more, since `0` is not
 2. `lo` is clamped to a minimum of `1`: there is no fret 0 to draw, and none below it.
 3. If the source contains any `0`, `lo` is forced to `1`, since an open-string marker is drawn relative to the nut.
    A muted marker does **not** force the nut: it says nothing about frets, and forcing it would stretch a muted barre chord high on the neck down to fret 1.
-   It sits on boundary 0, which is the nut only when the window reaches it.
+   It sits on the first fret line, which is the nut only when the window reaches it.
 4. `hi` is clamped to `maxFret`, for the same reason in the other direction: the window may not extend past the last fret that exists.
 5. If the window is narrower than `minFrets`, it is widened — rightward while `hi` is below `maxFret`, then leftward while `lo` is above `1`.
 
-Clamping rather than rejecting matters at the top of the range.
-A source naming fret `maxFret` is legal, and at the default `trailingFrets` of 1 step 1 puts `hi` one past the end of the neck; rejecting that would make the highest legal fret unusable at default settings.
-Step 4 trims it instead, and step 5 recovers the width by extending downward.
-
-Between them, steps 2 and 4 bound the window to `[1, maxFret]`, so its span cannot exceed `maxFret` frets.
-No separate "window too wide" check is needed, and large `leadingFrets` or `trailingFrets` values cannot produce a rejection — they just hit a clamp.
-
-There is no separate "whole neck" mode, because `leadingFrets` already expresses one: step 2 clamps, so a `leadingFrets` that reaches past fret 1 anchors the window at the nut.
-At the default `leadingFrets` of 1, the nut appears exactly when the shape sits within a fret of it, which is when it carries information — a shape five frets up neither needs the nut nor the empty frets between.
-Fret labels carry absolute fret numbers, so a window that excludes the nut is still unambiguous about position.
-
-The worked examples — an open chord, a shape high on the neck, and the clamps at both ends — are in `src/core/fretboard/layout.test.ts`, which is authoritative for the window.
+Clamping rather than rejecting means no setting the user can reach produces an error, and a source naming the highest fret still renders at the default settings.
+A large `leadingFrets` doubles as a whole-neck view, since it clamps at the nut.
+At the default of 1, the nut appears exactly when the shape sits within a fret of it, which is when it carries information; fret labels show absolute fret numbers, so a window without the nut is still unambiguous.
 
 ### Fretboard render model
 
-Let `M = hi − lo + 1` be the number of frets drawn.
-*Fret boundary `j`* (for `j = 0…M`) is the vertical line at the left edge of fret `lo + j`, so boundary `M` is the right edge of the last fret.
-Boundary `0` is the **nut** when `lo = 1`.
+Every formula lives in `src/core/fretboard/layout.ts` and its tests.
 
-#### Node tree
+A single parent frame, with no auto-layout and no row frames, holds the string labels, fret lines, string lines, markers and fret labels directly, and is sized to fit them.
+Re-rendering a frame that was tablature switches its auto-layout off.
 
-The tree is built by `renderFretboard` in `src/plugin/render.ts`, from the scene's items in order: a single parent frame carrying the plugin data, holding the string labels, fret boundaries, string lines, dots, open discs, muted markers and fret labels directly, with no row frames.
-
-- The parent frame has no auto-layout, no padding and no fill, and is resized to the scene's extent.
-  Re-rendering a frame that was tablature switches its auto-layout off, since the render target follows the selection whatever mode the frame was.
-- Layer names follow tablature's rule: indices are 0-based, and a fret label is named for its absolute fret number.
-- Dots and open discs are ellipses whose stroke, when they have one, sits inside the disc, so a disc's ink is exactly `dotDiameter` across.
-- A muted marker is three nodes: an ellipse, then its two diagonal strokes.
-  The strokes are the only lines that are not axis-aligned, and are drawn as rectangles like every other line, rotated by a transform core computes.
-
-#### Coordinates
-
-Every formula and figure lives in `src/core/fretboard/layout.ts` and its tests.
-What follows is the shape of the model and why it is shaped that way.
-
-`L` is the label column width, exactly as in tablature: the widest label plus `stringLabelGap`.
-It is never 0, because every string has a label — which is what keeps the open disc inside the frame: `L` is at least `stringLabelGap`, comfortably more than half the `dotDiameter` that a disc centered on the nut extends to its left.
-The whole board is offset right by `L`, which leaves the label column to its left.
-
-Fret boundaries are evenly spaced `fretGapWidth` apart from `x = L`, and strings `stringGap` apart from `y = padY`.
-Boundary lines span the strings from top to bottom, overshooting each end by half a stroke weight as tablature's measure breaks do, so the nut and every boundary cover the full thickness of the outer string lines rather than stopping at their centres; string lines span the boundaries from the nut, or boundary 0, to the last.
-The frame extends a full stroke weight past the last boundary, so its ink is not clipped.
-Beneath the board, after `fretLabelGap`, is one row of fret labels, and the frame ends at their bottom edge.
-String labels are right-aligned to `x = L − stringLabelGap` and centered on their string's `y`, as in tablature.
-
-- `padY` exists for the same reason as in tablature: a dot, an open disc or a label centered on the first string would otherwise extend above the frame.
-  It is half the tallest thing drawn on a string line, plus `clearance`.
-- Fret labels sit **beneath each fret gap**, not beneath each boundary line, so a label is directly under the dots it applies to.
-  This supersedes any reading of "below each vertical line".
-- The nut is drawn with `nutStrokeWeight`; every other boundary and every string uses `strokeWeight`.
-- A **fretted note** is a disc of `dotDiameter` filled with `inkColor`, centered in its fret gap, which covers the string line beneath it.
-- An **open string** is a disc of the same `dotDiameter` superimposed on the nut, centered at `x = L` and on the string's `y`, with a `strokeWeight` stroke in `inkColor` and a `knockoutFill` fill.
-  The fill is what makes it read as an open marker rather than a fretted one: the nut line and the string line both stop at its edge instead of running through it.
-  There is no fret gap for an open string to sit in — fret 1's gap belongs to a source token of `1` — so the disc goes on the nut itself, which is why any `0` forces the window to include the nut.
-- A **muted string** is a disc of the same `dotDiameter` at the same place, on boundary 0, filled with `knockoutFill` and with no stroke, carrying an X: two diagonal strokes of `strokeWeight` in `inkColor`, crossing at the disc's centre.
-  The fill stops the nut and string line at the disc's edge, as for an open string, and the missing outline is what tells the two apart.
-  Each stroke is as long as it can be while its ink, square ends included, stays inside the disc.
-- `dotDiameter` MUST exceed `nutStrokeWeight`, or an open disc cannot cover the nut it sits on.
-  At the defaults it is 10 against 4.
-- Z-order is string labels, then boundaries and string lines, then dots, open discs and muted markers, then fret labels.
-  An open disc or muted marker drawn before the nut would be hidden by it.
-- The open and muted discs' fill assumes a white background, and they are the last things in either mode that do; see [Non-goals](#non-goals).
+- The board starts at `L`, the label column width as in tablature, with fret lines `fretGapWidth` apart and strings `stringGap` apart.
+  The first fret line is the **nut**, drawn heavier, but only when the window starts at fret 1.
+- Fret labels sit beneath each fret gap rather than each line, so a label is directly under the dots it applies to.
+- A **fretted note** is a filled dot centered in its fret gap.
+- An **open string** is an outlined disc on the nut.
+  Its fill stops the nut and string line at its edge, which is what makes it read as open rather than fretted.
+  There is no fret gap for it to sit in, which is why any `0` pulls the window to the nut.
+- A **muted string** is a disc in the same place with no outline, carrying an X.
+- Markers are drawn after the lines, so the nut can't hide them.
+- The open and muted discs' fill assumes a white background, the one place either mode still does; see [Non-goals](#non-goals).
 
 ### Fretboard string labels
 
-Labels work as they do in [tablature](#string-labels): always rendered, read verbatim when the source supplies them, and otherwise taken from the default tuning for the string count, with the same `partial-labels` and `unsupported-string-count` errors.
-The differences are the syntax, described in [ASCII input](#ascii-input) — a leading token rather than a prefix before a playable region — and the geometry, where the label column sits left of the nut rather than left of the string lines.
-
-```
-e 3
-B 3
-G 0
-D 0
-A 2
-E 3
-```
-
-Each label renders as a text node right-aligned to `x = L − stringLabelGap`, vertically centered on its string.
-The source above supplies all six; a source supplying none renders `e B G D A E` in the same places.
+Labels work as they do in [tablature](#string-labels), with the same `partial-labels` and `unsupported-string-count` errors.
+Only the syntax differs: a leading token rather than a prefix before a playable region, as described in [ASCII input](#ascii-input).
 
 ### Fretboard render settings
 
-Settings are per-parent-frame and stored with the ASCII source as plugin data on the parent frame; see [Persistence and re-edit](#persistence-and-re-edit).
-
-Six are user-configurable: `fretGapWidth`, the width of each drawn fret; `stringGap`; `strokeWeight`, for strings and fret boundaries alike; `fontSize`, which governs both string labels and fret labels; and `leadingFrets` and `trailingFrets`, which buffer the [fret window](#fret-window).
-Their defaults and ranges are in `src/core/settings.ts`, which is also where the UI reads the `min`, `max` and `step` for its inputs.
-`leadingFrets` and `trailingFrets` count frets, so they are whole numbers; see [Settings validation](#settings-validation).
-
-Everything else is fixed for v1 and lives in the same module: `clearance`; `minFrets`, the narrowest window; `maxFret`, the highest fret a source may name and the highest the window may reach; `nutStrokeWeight`; `dotDiameter`; `fretLabelGap`; `stringLabelGap`; `defaultTunings`; `knockoutFill`, the open and muted discs' fill; `inkColor`; and `fontFamily`, shared with tablature.
+Settings are stored per parent frame, with the source, as plugin data.
+Six are user-configurable: `fretGapWidth`, `stringGap`, `strokeWeight` (strings, fret lines and marker outlines), `fontSize` (string and fret labels), and `leadingFrets` and `trailingFrets`, which buffer the [fret window](#fret-window) and are whole numbers.
+Defaults, ranges and every fixed constant are in `src/core/settings.ts`.
 
 ### Fretboard tests
 
@@ -477,46 +281,24 @@ As for tablature, they use sources of their own, and this document doesn't list 
 
 ## Text, fonts and measurement
 
-*Authoritative: `src/core/measure.ts` for the measurement contract, and `src/plugin/` for the real measurer and for font resolution. What follows is why they work this way.*
-
 These rules are shared by both modes.
 
 ### Measuring text
 
-Tablature slot widths depend on measured text, and so does the label column width `L` in both modes, so layout cannot be computed from the parse result and settings alone.
-Layout therefore takes a `measure(text, fontSize) => width` function as a parameter rather than reaching for a measurement API itself.
-This keeps layout a pure function and keeps its output deterministic in tests.
-
-- **In the sandbox**, which is the only place layout runs, `measure` is Figma-backed: it sets the characters on one reusable hidden `TextNode` and reads its `width`, then removes it after the render.
-  This is authoritative for any family, including the proportional `Roboto` fallback.
-- **In tests**, `measure` is `src/core/`'s analytic monospace implementation: `width = text.length × fontSize × advanceRatio`.
-  Every px figure in the layout tests is computed with it, so expectations are exact and need no Figma runtime.
-- The analytic measure is a **test double, not a fallback**: the plugin never renders with it.
-
-`advanceRatio` is therefore not a font metric, and nothing about the rendered output depends on its value:
-
-- It cannot affect a real render, because the sandbox always measures with Figma.
-  A wrong value would make the test fixtures disagree with reality, not make the plugin render incorrectly.
-- The ratio is chosen for being round and for being close to real monospace metrics, so fixture numbers stay plausible when read as sanity checks.
-  It is not a measurement of Roboto Mono, and a more precise figure would buy nothing.
-- Because the ratio is a stub, making `fontFamily` configurable later changes nothing here: the sandbox measures whatever family it is handed, and the tests keep their arithmetic.
-
-What the fixtures do pin down is the **layout formulas**, not the font.
-If `advanceRatio` ever changes, every expected px figure moves with it and the formulas stay as written — which is why the layout tests assert against an expression built from the settings constants, alongside the literal.
+Slot widths and the label column depend on measured text, so layout takes a `measure(text, fontSize)` function rather than reaching for a measurement API.
+That keeps layout pure and its output deterministic in tests.
+In the plugin, `measure` is backed by a Figma text node.
+In tests it is an analytic monospace stub from `src/core/measure.ts`, whose ratio is not a font metric: the plugin never renders with it, so its value affects only the tests' arithmetic.
 
 ### Fonts and text nodes
 
-Both modes create text nodes through one helper, `src/plugin/font.ts`, which is what makes the decisions below hold for the fretboard diagram as well as for tablature.
-If that helper is ever bypassed, every vertical formula in this document silently stops being true.
+Every text node is created through one helper, `src/plugin/font.ts`, so these hold in both modes:
 
-- The default family is `Roboto Mono` Regular, falling back to `Roboto` Regular if it fails to load — `Roboto` is always available in Figma.
-  The family is resolved **once per render** and used for both measurement and drawing.
-  Measuring in one family while drawing in another would compute every slot width from a font that is not on screen, and nothing would fail: `src/plugin/` carries no tests.
-- A text node's line height is **pinned** to its font size rather than left automatic.
-  Figma's default auto line height is roughly 1.2 × `fontSize` and varies by family, so a node's height would otherwise be a font metric this document cannot predict.
-  Pinning it makes every text node exactly `fontSize` tall, which is what `padY` and the row-height formulas assume, and keeps `measure` a width-only function.
-- Vertical centering is on the **em box**, not on the digits' cap height, so glyphs sit marginally high.
-  Accepted for v1 rather than corrected with a font-dependent nudge.
+- The font is `Roboto Mono`, falling back to `Roboto`, which Figma always has.
+  It is resolved once per render and used for both measurement and drawing, since measuring in one font and drawing in another would get every width wrong without failing.
+- Line height is pinned to the font size, so a text node's height is predictable rather than a font metric.
+- Vertical centering is on the em box, so glyphs sit marginally high.
+  That is accepted rather than corrected with a font-specific nudge.
 
 ## Persistence and re-edit
 
@@ -529,11 +311,10 @@ Both modes render into a parent container frame that stores its own ASCII source
 Written with `node.setPluginData` on the parent frame — **private** plugin data, not shared plugin data.
 A frame stores four keys: `schemaVersion`, `mode`, `source` and `settings`.
 They live in users' documents, so they are a contract: renaming, removing or reinterpreting one needs a schema version bump.
-Figma stores only strings, so the schema version is a decimal string, the source is stored verbatim, and the settings are JSON.
+Figma stores only strings, so the version is a decimal string and the settings are JSON.
 
-A frame is recognized as plugin-generated when its schema version and mode are both present and readable, **and it carries a source**.
-The source is what makes the three [selection cases](#in-place-edit-flow) exhaustive: a frame of ours with no source has nothing to edit, so it is reported as if nothing were selected and the user is told the data could not be read.
-`getPluginData` returns an empty string for a key that was never set, and a rendered frame can never store an empty source — `empty-source` is an error, so the render would have been refused — so absent and empty mean the same thing, and both mean corrupt.
+A frame is recognized as ours when its version and mode are readable **and it carries a source**.
+A frame of ours with no source has nothing to edit, so it is treated as unreadable: reported as if nothing were selected, with a notice telling the user.
 
 No other node carries plugin data.
 
@@ -558,8 +339,7 @@ No other node carries plugin data.
    | A single frame whose `schemaVersion` is newer than this plugin | `unsupported-version` | Reports that the frame was made by a newer version, and offers no re-render |
    | Anything else — nothing selected, several nodes, a node without plugin data, or a frame of ours whose stored source is unreadable | `none` | **Create mode**: on launch, settings start from the user's last-used values for each mode (see below), and the source starts empty — a source is only ever restored from a selected frame's plugin data, in edit mode; later in a session the editor keeps whatever it holds. An unreadable frame of ours also raises a `figma.notify`, since the user is looking at something the plugin made and declining to load it |
 
-2. `init.command` is `"edit"` only when `selection` is `editable`, and `"run"` in every other case.
-   A relaunch button can only exist on a frame the plugin generated, but that frame may still carry an `unsupported-version` schema, so the two fields are reported independently and the UI trusts `selection`.
+2. `init.command` is `"edit"` only when the selection is `editable`; a relaunch button can sit on a frame from a newer version, so the UI trusts `selection`, not the command.
 
 3. **A selection that carries a diagram replaces the editor's contents, discarding unsaved edits.** Selecting an `editable` frame loads its source and settings over whatever the user had typed, with no prompt and no confirmation.
    The plugin keeps no dirty flag and tracks no unsaved state: a frame's plugin data is the source of truth, sources are usually pasted from elsewhere, and a confirmation flow would add more state machinery than the loss is worth.
@@ -583,10 +363,8 @@ No other node carries plugin data.
 6. Re-rendering in edit mode **replaces all children** of the existing parent frame, then rewrites its plugin data.
    The frame's own id, name, position and parent are preserved, so the diagram keeps its place in the document and inbound references survive.
    Its layout properties are not: they are reset as for a new frame, as described in [Override policy](#override-policy).
-7. Generated frames call `node.setRelaunchData({ edit: "" })`, which gives the frame an Edit button in Figma's design panel.
-   The manifest MUST declare a matching `relaunchButtons` entry, and that entry is what supplies the button's label.
-   The value passed here is an optional *description* shown beneath the button, so it is left empty rather than repeating the label as a subtitle.
-   On relaunch the plugin reads `figma.command === "edit"`, resolves the selection as in step 1, and reports `command: "edit"` only if that resolution produced an `editable` state.
+7. Generated frames carry an **Edit** relaunch button in Figma's design panel, declared in the manifest.
+   On relaunch the plugin resolves the selection as in step 1.
 
 ### Override policy
 
@@ -635,9 +413,7 @@ Rules:
   Node ids are not stable across renders, since every child is rebuilt.
 - The UI MUST NOT block its own input on a round trip.
   Validation shown while typing comes from the local parser, not from a sandbox reply.
-- `TablatureSettings` and `FretboardSettings` live in `src/core/settings.ts`; adding a setting means editing that module.
-  The two modes share no settings type, which is why every message carries a `Diagram` rather than a loose `mode` and `settings` pair — a `"fretboard"` mode can't be paired with tablature settings.
-  `ParseError` is defined in `src/core/diagnostics.ts`; see [Error handling and validation](#error-handling-and-validation) for what the diagnostics mean.
+- Every message carries a `Diagram` rather than a loose mode and settings pair, so a fretboard can't be paired with tablature settings.
 - A receiver narrows on a message's `type` before trusting its payload, since `postMessage` delivers `unknown`.
   Settings arriving over the wire are clamped regardless, so a hand-crafted message cannot put an out-of-range value into a render.
 
@@ -648,10 +424,9 @@ A **warning** renders anyway; an **error** blocks rendering.
 
 *Authoritative for the diagnostic type itself: `src/core/diagnostics.ts`; for each mode's codes and anchors, that mode's parser and its tests. Severities, and the reasoning for them, are normative.*
 
-A diagnostic carries a severity, a stable kebab-case `code` for tests and i18n, a one-sentence user-facing `message`, and, where possible, an anchor: a line, and optionally a column and length.
+A diagnostic carries a severity, a stable `code`, a one-sentence user-facing `message`, and, where possible, an anchor: a line, and optionally a column and length.
 A diagnostic about a setting has no anchor, since it is wrong whatever the source says.
 The anchor is what lets the UI select the offending text when a diagnostic is clicked, so a code that *can* name a precise run should.
-Lines and columns are 0-based — the line within the whole source, the column within that raw line, prefix included.
 
 ### Settings validation
 
@@ -677,7 +452,7 @@ A value that cannot be clamped — a missing key, or one whose type is wrong —
 | --- | --- | --- | --- |
 | `empty-source` | Source is empty or whitespace only | error | Never shown, since an empty field explains itself; it exists to disable the render button and to stop parsing before other diagnostics misdescribe the empty source |
 | `tab-character` | Source contains a horizontal tab | error | Tabs make column alignment unknowable; the message tells the user to use spaces |
-| `source-too-large` | Source exceeds 50,000 characters | error | Keeps the serialized plugin data well inside Figma's per-key limit |
+| `source-too-large` | Source exceeds the size cap | error | Keeps the serialized plugin data well inside Figma's per-key limit |
 | `partial-labels` | Some lines carry a string label and others don't | error | The source disagrees with itself about the strings; nothing is assumed |
 | `unsupported-string-count` | The string count is not 4, 6 or 7 | error | The plugin supports bass, guitar and seven-string guitar; any other count has no default tuning, and the spec's "a label for every string" invariant would not hold |
 | `setting-out-of-range` | A settings value falls outside its range, or a whole-number setting holds a fraction | warning | Clamped to the nearest end of the range, and the render proceeds |
@@ -745,7 +520,7 @@ An implementation that adds any of it is doing unrequested work.
 
 | Deferred | Note |
 | --- | --- |
-| Fretboard open and muted markers on backgrounds that are not white | Open and muted discs are filled with `knockoutFill`, so on a dark frame or over artwork they show as white discs. Tablature no longer has this problem: its string lines are cut into segments around each cell (see [String lines and gaps](#string-lines-and-gaps)). The fretboard fix is either a theme-aware fill or cutting the nut and string lines around the disc the same way. |
+| Fretboard open and muted markers on backgrounds that are not white | The discs' fill shows as white on anything that isn't white. The fix is a theme-aware fill, or cutting the lines around each disc as tablature does. |
 | Color and theme settings | `inkColor` is fixed black. Exposing stroke and text color is a settings-table addition and a schema-compatible change. |
 | Fretboard position label (`5fr` style) | Every drawn fret is labeled instead. |
 | Finger numbers inside fretboard dots | Would need new ASCII syntax. |
