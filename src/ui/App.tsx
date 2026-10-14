@@ -164,6 +164,7 @@ export function App() {
       />
 
       <SourceField
+        textareaLabel={mode === "tablature" ? "ASCII tab" : "ASCII diagram"}
         value={source}
         examplesUrl={examplesUrls[mode]}
         onChange={setSource}

@@ -1,6 +1,7 @@
 import { useId, type RefObject } from "react";
 
 interface Props {
+  textareaLabel: string;
   value: string;
   /** This mode's section of the examples doc. */
   examplesUrl: string;
@@ -9,7 +10,7 @@ interface Props {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
 }
 
-export function SourceField({ value, examplesUrl, onChange, textareaRef }: Props) {
+export function SourceField({ textareaLabel, value, examplesUrl, onChange, textareaRef }: Props) {
   const id = useId();
 
   // Not a wrapping <label>: a link inside one would also focus the textarea.
@@ -17,7 +18,7 @@ export function SourceField({ value, examplesUrl, onChange, textareaRef }: Props
     <div className="flex flex-col gap-1">
       <div className="flex items-baseline justify-between">
         <label htmlFor={id} className="font-medium text-neutral-700">
-          ASCII tab
+          {textareaLabel}
         </label>
         <a
           href={examplesUrl}
