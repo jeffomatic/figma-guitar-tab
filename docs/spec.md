@@ -870,7 +870,7 @@ A value that cannot be clamped — a missing key, or one whose type is wrong —
 
 | Code | Condition | Severity | Behavior |
 | --- | --- | --- | --- |
-| `empty-source` | Source is empty or whitespace only | error | Render button disabled, no message shown until the user has typed something |
+| `empty-source` | Source is empty or whitespace only | error | Never shown, since an empty field explains itself; it exists to disable the render button and to stop parsing before other diagnostics misdescribe the empty source |
 | `tab-character` | Source contains a horizontal tab | error | Tabs make column alignment unknowable; the message tells the user to use spaces |
 | `source-too-large` | Source exceeds 50,000 characters | error | Keeps the serialized plugin data well inside Figma's per-key limit |
 | `partial-labels` | Some lines carry a string label and others don't | error | The source disagrees with itself about the strings; nothing is assumed |
