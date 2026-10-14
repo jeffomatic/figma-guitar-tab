@@ -778,7 +778,8 @@ No other node carries plugin data.
    The alternative — letting the render fall through to a `new` frame — would answer "I can't edit this one" by silently producing a different diagram somewhere else.
    Deselecting the frame is how the user gets back to creating one.
 6. Re-rendering in edit mode **replaces all children** of the existing parent frame, then rewrites its plugin data.
-   The frame's own id, name, position, size constraints and parent are preserved, so the diagram keeps its place in the document and inbound references survive.
+   The frame's own id, name, position and parent are preserved, so the diagram keeps its place in the document and inbound references survive.
+   Its layout properties are not: they are reset as for a new frame, as described in [Override policy](#override-policy).
 7. Generated frames call `node.setRelaunchData({ edit: "" })`, which gives the frame an Edit button in Figma's design panel.
    The manifest MUST declare a matching `relaunchButtons` entry, and that entry is what supplies the button's label.
    The value passed here is an optional *description* shown beneath the button, so it is left empty rather than repeating the label as a subtitle.
@@ -790,7 +791,11 @@ Manual edits to the *contents* of a generated frame — moving a text node, rest
 This is deliberate: the plugin data is the source of truth, and diffing hand edits against regenerated geometry is out of scope.
 Nothing inspects the existing subtree before a re-render: the plugin discards every child and renders afresh from the parsed source, so neither half needs to know what was there.
 
-Edits to the parent frame itself (position, name, rotation, opacity, effects, locking) are preserved.
+Edits to the parent frame itself are preserved only where the render doesn't set that property.
+Position, name, rotation, opacity, effects and locking are kept.
+Fill, clipping and padding are reset on every re-render — no fill, clipping on, zero padding — because both modes' geometry assumes them.
+So is the frame's layout, which belongs to the mode being rendered: tablature turns on vertical auto-layout with `rowGap` as its spacing and hugs its rows, and fretboard turns auto-layout off and resizes the frame to the scene's extent.
+A user's own auto-layout, spacing or sizing on the parent is therefore discarded, as is anything a conversion from the other mode left behind.
 
 ### Last-used settings
 
