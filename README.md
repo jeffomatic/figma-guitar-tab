@@ -21,6 +21,7 @@ The string count comes from the number of lines in the source, and any other cou
 
 | Document | Contents |
 | --- | --- |
+| [docs/examples.md](docs/examples.md) | Example sources for both modes, to paste into the plugin. |
 | [docs/spec.md](docs/spec.md) | Normative product specification. The source of truth for behavior. |
 | [AGENTS.md](AGENTS.md) | Engineering conventions for anyone (human or agent) writing code here. |
 | [TODO.md](TODO.md) | Implementation plan and milestone status. |
