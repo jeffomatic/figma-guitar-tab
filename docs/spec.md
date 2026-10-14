@@ -844,7 +844,8 @@ A **warning** renders anyway; an **error** blocks rendering.
 
 *Authoritative for the diagnostic type itself: `src/core/diagnostics.ts`; for each mode's codes and anchors, that mode's parser and its tests. Severities, and the reasoning for them, are normative.*
 
-A diagnostic carries a severity, a stable kebab-case `code` for tests and i18n, a one-sentence user-facing `message`, and an anchor: a line, and optionally a column and length.
+A diagnostic carries a severity, a stable kebab-case `code` for tests and i18n, a one-sentence user-facing `message`, and, where possible, an anchor: a line, and optionally a column and length.
+A diagnostic about a setting has no anchor, since it is wrong whatever the source says.
 The anchor is what lets the UI select the offending text when a diagnostic is clicked, so a code that *can* name a precise run should.
 Lines and columns are 0-based — the line within the whole source, the column within that raw line, prefix included.
 
@@ -913,7 +914,7 @@ Hence `leading-blank-line` below — it renders either way, but says what it ass
 
 ### Presentation
 
-- The UI lists the current diagnostics beneath the source field, errors first, each showing its line number and message.
+- The UI lists the current diagnostics beneath the source field, errors first, each showing its message and, where possible, its line number.
   Clicking one selects the offending range in the source field.
 - The render button is disabled while any diagnostic has severity `error`, and while the selection is `unsupported-version`.
 - Settings controls carry their documented range as input attributes, which makes out-of-range values unreachable by normal use without being the only thing preventing them; see [Settings validation](#settings-validation).
