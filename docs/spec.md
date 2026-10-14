@@ -759,7 +759,7 @@ No other node carries plugin data.
    | --- | --- | --- |
    | A single frame with readable plugin data this version supports | `editable` | **Edit mode**: activates that frame's mode, populates source and settings from the stored values |
    | A single frame whose `schemaVersion` is newer than this plugin | `unsupported-version` | Reports that the frame was made by a newer version, and offers no re-render |
-   | Anything else — nothing selected, several nodes, a node without plugin data, or a frame of ours whose stored source is unreadable | `none` | **Create mode**: on launch, source and settings start from the user's last-used values for the active mode (see below); later in a session the editor keeps whatever it holds. An unreadable frame of ours also raises a `figma.notify`, since the user is looking at something the plugin made and declining to load it |
+   | Anything else — nothing selected, several nodes, a node without plugin data, or a frame of ours whose stored source is unreadable | `none` | **Create mode**: on launch, settings start from the user's last-used values for each mode (see below), and the source starts empty — a source is only ever restored from a selected frame's plugin data, in edit mode; later in a session the editor keeps whatever it holds. An unreadable frame of ours also raises a `figma.notify`, since the user is looking at something the plugin made and declining to load it |
 
 2. `init.command` is `"edit"` only when `selection` is `editable`, and `"run"` in every other case.
    A relaunch button can only exist on a frame the plugin generated, but that frame may still carry an `unsupported-version` schema, so the two fields are reported independently and the UI trusts `selection`.
