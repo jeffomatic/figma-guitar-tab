@@ -16,8 +16,8 @@ export function NumberField({ label, range, value, onChange }: Props) {
   const { min, max, step } = range;
 
   return (
-    <label className="flex items-center justify-between gap-3">
-      <span className="text-neutral-600">{label}</span>
+    <label className="flex flex-col gap-1">
+      <span className="font-medium text-neutral-600">{label}</span>
       <input
         type="number"
         min={min}
@@ -29,7 +29,7 @@ export function NumberField({ label, range, value, onChange }: Props) {
           // An emptied field reads as NaN; leave the last good value alone.
           if (Number.isFinite(next)) onChange(next);
         }}
-        className="w-20 rounded border border-neutral-300 px-2 py-1 text-right tabular-nums focus:border-neutral-500 focus:outline-none"
+        className="w-full rounded-md bg-white px-2 py-1.5 tabular-nums shadow-xs ring-1 ring-neutral-300 transition-shadow ring-inset outline-none hover:ring-neutral-400 focus:ring-2 focus:ring-neutral-900"
       />
     </label>
   );

@@ -21,7 +21,7 @@ export function SourceField({ value, placeholder, onChange, textareaRef }: Props
         spellCheck={false}
         rows={10}
         placeholder={placeholder}
-        className="resize-y rounded border border-neutral-300 p-2 font-mono text-xs leading-snug whitespace-pre focus:border-neutral-500 focus:outline-none"
+        className="resize-y rounded-md bg-white p-2 font-mono text-xs leading-snug whitespace-pre shadow-xs ring-1 ring-neutral-300 transition-shadow ring-inset outline-none hover:ring-neutral-400 focus:ring-2 focus:ring-neutral-900"
       />
     </label>
   );

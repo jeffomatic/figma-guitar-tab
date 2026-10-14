@@ -9,7 +9,7 @@ interface Props<T extends { [K in keyof T]: number }> {
   onChange: (update: (current: T) => T) => void;
 }
 
-/** One number input per setting of one mode, in the given order. */
+/** One number input per setting of one mode, in the given order, filled row by row. */
 export function SettingsFields<T extends { [K in keyof T]: number }>({
   order,
   values,
@@ -18,7 +18,9 @@ export function SettingsFields<T extends { [K in keyof T]: number }>({
   onChange,
 }: Props<T>) {
   return (
-    <div className="flex flex-col gap-2">
+    // Two columns of stacked fields, so each label sits right above its input
+    // instead of across the window from it.
+    <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 rounded-lg bg-neutral-50 p-3 ring-1 ring-neutral-200 ring-inset">
       {order.map((name) => (
         <NumberField
           key={String(name)}
