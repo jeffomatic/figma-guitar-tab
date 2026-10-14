@@ -5,7 +5,7 @@ When code and spec disagree, the spec wins — or the spec is wrong and should b
 Do not implement behavior the spec doesn't describe; see its [Non-goals](docs/spec.md#non-goals).
 
 This file holds invariants, workflow and conventions — how to work in this repo — and points at the spec for anything the spec defines.
-If a sentence here would need editing because the spec gained a test case, a setting or a diagnostic code, it is restating the spec and belongs there instead.
+If a sentence here would need editing because the spec gained a setting or a diagnostic code, it is restating the spec and belongs there instead.
 
 ## Planning and approval
 
@@ -13,23 +13,23 @@ Exiting plan mode is not approval to implement.
 When a plan is finished, stop and wait for an instruction that names what to build.
 
 Treat an ambiguous signal — a mode change, a "continue", a plan file that now exists — as *the plan is ready*, never as *start building*.
-A milestone in [TODO.md](TODO.md) is a description of work, not a go-ahead for it.
 
 ## Stack
 
 - **UI:** React and TailwindCSS, rendered in the plugin's HTML iframe.
 - **Build:** esbuild for TypeScript/JSX transpilation and bundling, driven by `scripts/build.mjs`.
-  A small custom esbuild plugin compiles `src/ui/index.css` with Tailwind and inlines the result, along with the bundled UI script, into a single `dist/ui.html` — Figma requires the UI to be one self-contained HTML file.
+  After esbuild bundles both halves, the script compiles `src/ui/index.css` with Tailwind through PostCSS and inlines the result, along with the bundled UI script, into a single `dist/ui.html` — Figma requires the UI to be one self-contained HTML file.
+  In `--watch` mode a small esbuild plugin redoes that step after each rebuild.
 - **Format:** oxfmt, configured by `.oxfmtrc.json`, pinned to an exact version — a floating range on a pre-1.0 formatter reformats files nobody touched and buries the real diff.
   It formats **TypeScript and JavaScript only.**
-  Markdown is excluded because prose uses semantic line breaks (see Docs style) and because `src/core/tablature/fixtures.ts` is extracted byte-for-byte from `docs/spec.md`'s ASCII blocks, so reflowing one would silently change a slot structure.
-  JSON, CSS and HTML are excluded because oxfmt sorts `package.json` fields, `src/ui/index.css` carries Tailwind v4 directives, and `src/ui/index.html` carries the markers the build replaces by exact string match.
+  Markdown is excluded because prose uses semantic line breaks (see Docs style), and because reflowing an ASCII example would silently change what it means.
+  JSON, JSONC, YAML, CSS and HTML are excluded too, because oxfmt sorts `package.json` fields, `src/ui/index.css` carries Tailwind v4 directives, and `src/ui/index.html` carries the markers the build replaces by exact string match.
   Write code the formatter agrees with rather than fighting it: if it strips parentheses you wanted for clarity, restructure the expression instead of reinstating them.
-- **Lint:** oxlint with the recommended type-aware rulesets.
+- **Lint:** oxlint with type-aware linting on: the `correctness` category as errors, plus `typescript/no-floating-promises`.
 - **Tests:** Vitest.
   `src/core/` is tested; `src/plugin/` and `src/ui/` are not, by design (see below).
 - **Package manager:** pnpm.
-  Node 20+.
+  Node 22.12+, which the test runner requires.
 - TypeScript `strict: true`, plus `noUncheckedIndexedAccess` — the parser indexes into lines and columns constantly.
   Each area owns a `tsconfig.json` beside its code — `src/core/`, `src/plugin/`, `src/ui/` — extending `tsconfig.base.json`.
   They sit there rather than at the root because oxlint discovers the nearest `tsconfig.json` per file: with only root-level `tsconfig.<area>.json` files it found none, and every type-aware rule silently ran without type information for the Figma globals.
@@ -48,12 +48,15 @@ src/ui/       React controls → messages                          ← thin, pre
   It is a library that happens to be used by a plugin.
   It exports:
   - **parsers** — source text → a row/slot or fretboard structure, plus `ParseError[]`
-  - **layout** — that structure, settings, and an injected `measure(text, fontSize)` → a *scene*: a flat list of plain objects like `{ kind: "line", name, x1, y1, x2, y2, strokeWeight }`, `{ kind: "rect", name, x, y, width, height, fill }` and `{ kind: "text", name, x, y, characters, fontSize }`, in spec coordinates.
+  - **layout** — that structure, settings, and an injected `measure(text, fontSize)` → a *scene*: plain objects describing every line, disc and piece of text to draw, with its name, position, size and colour, in spec coordinates. The item types are in `src/core/scene.ts`.
     Measurement is injected because slot widths depend on it: the sandbox passes a Figma-backed measure, tests pass core's analytic monospace one.
   - **measure** — the `measure(text, fontSize)` signature, and the analytic monospace implementation that tests inject
   - **settings** — defaults, ranges, clamping, serialization
   - **protocol** — the `UiMessage`/`SandboxMessage` types, imported by both halves
   - **diagnostics** — `Severity`, `ParseError` and the union of diagnostic codes, which every parser returns and both halves consume
+  - **scene** — the scene item types, and `lineBox`, which turns a line into the rectangle that draws it
+  - **diagram** — `checkDiagram`, the one parse-and-clamp entry point both halves call, so they reach the same verdict
+  - **pluginData** — encoding and decoding a frame's stored diagram, and the schema version policy
 - `src/plugin/` contains the only code that calls the Figma API.
   Its renderer walks a scene and creates nodes; it makes no layout decisions and does no arithmetic beyond translating coordinates onto a frame.
 - Consequence: every geometry question is answerable in a unit test, with no Figma runtime and no screenshots.
@@ -61,18 +64,16 @@ src/ui/       React controls → messages                          ← thin, pre
 
 ## Tests
 
-- Every `TC-*` case in the spec's test-case sections exists as a named fixture, and the test names reference the code (`TC-2 hyphenspace collapses`).
-  Adding a spec test case means adding a fixture.
-  The spec holds each case's **source and purpose**; its figures live in the tests, which is the copy that fails when it is wrong.
-  `src/core/tablature/fixtures.ts` is extracted from the spec's fenced blocks verbatim, so a case's ASCII must stay byte-identical in both.
+- Tests own their cases. Sources live in each mode's `fixtures.ts`, and the docs neither name nor copy individual cases, so a test can be added, renamed or removed without touching them.
+  The spec states rules; the tests pin the exact figures, and are the copy that fails when one is wrong.
 - Layout is asserted on the scene, not on rendered output: counts and kinds of scene items, and exact coordinates computed from the spec's formulas.
 - Layout tests inject the analytic monospace measure, never a Figma-backed one, so slot widths and positions are deterministic.
-  Every px figure in the spec's test cases is computed with that measure.
   Its advance ratio is a stub constant, not a font metric — the sandbox measures with Figma, so no render depends on it.
   Don't "correct" it against real font metrics; that would invalidate every fixture for no gain.
 - Tests are co-located with the code they cover, as `*.test.ts` beside the module — `src/core/tablature/parse.test.ts`, not a separate `__tests__/` tree.
 - Equivalence cases — two sources the spec says must parse identically — are asserted as deep equality between the two parses, not against a transcribed expectation, so they survive a change to defaults.
-- Diagnostics are asserted by `code`, `line` and `column`, never by message text.
+- Diagnostics are asserted by `code`, `line` and `column`.
+  Message text is asserted only where the wording is itself the rule under test, such as a settings diagnostic naming the setting by its UI label.
 
 ## Manifest
 
@@ -93,7 +94,7 @@ src/ui/       React controls → messages                          ← thin, pre
 `editorType` is `figma` only: the plugin draws vector nodes, which FigJam and Slides don't support in the same way.
 
 `id` is required, and the committed value is a **placeholder**: publication assigns the durable id and overwrites it.
-Importing from a manifest accepts any well-formed value, verified at M0, so there is nothing to mint locally.
+Importing from a manifest accepts any well-formed value, so there is nothing to mint locally.
 Don't mint one from the Figma app to look official — it would be replaced too, and a plausible value is harder to notice before publishing than an obviously synthetic one.
 
 ## What the UI does not do
@@ -120,7 +121,7 @@ Those are resolved by clamping inside core, not by a diagnostic — a setting th
 
 - `documentAccess` is `dynamic-page`, which Figma requires of new plugins.
   It restricts `getNodeById`, `getFileThumbnailNode`, `ComponentNode.instances`, and `PageNode`'s `appendChild` / `findAll` / `findChild` / `exportAsync` family.
-  Node lookup by id is therefore async — `getNodeByIdAsync`, which M5 needs for an `existing` render target — and a `PageNode` member needs `await page.loadAsync()` first.
+  Node lookup by id is therefore async — `getNodeByIdAsync`, which an `existing` render target needs — and a `PageNode` member needs `await page.loadAsync()` first.
   `figma.viewport` and `selection` are unaffected.
 - **Node creation auto-appends to `figma.currentPage`.** So move a new node into its frame with `FrameNode.appendChild` and never reach for `PageNode.appendChild`, which is one of the restricted members above.
 - **Resolve the font once per render** and use it for measurement *and* drawing.
@@ -135,7 +136,7 @@ Those are resolved by clamping inside core, not by a diagnostic — a setting th
   Load once per render, not per node.
 - Set `lineHeight` to `fontSize` and `textAutoResize` to `WIDTH_AND_HEIGHT` on every text node.
   Figma's default auto line height is a font metric, so leaving it alone makes node heights unpredictable and the spec's vertical formulas wrong.
-- Node z-order is creation order within a parent, so the renderer appends scene items in the order the spec lists them: labels, string segments, measure breaks, text.
+- Node z-order is creation order within a parent, so the renderer appends scene items in the order layout emits them, which is the order the spec gives for each mode.
 - **Leave the background alone: never hide ink by painting over it.**
   Tablature string lines stop short of each note cell instead of running behind it under a white rectangle, because Figma's canvas is grey and a design's frames are any colour.
   Where a line has to give way to something, layout cuts the line into segments; the renderer just draws them.
@@ -156,7 +157,8 @@ Those are resolved by clamping inside core, not by a diagnostic — a setting th
 
 ## UI copy
 
-Every user-facing string comes from the spec's [Naming and UI copy](docs/spec.md#naming-and-ui-copy) table.
+Every UI label comes from the spec's [Naming and UI copy](docs/spec.md#naming-and-ui-copy) table.
+Messages — diagnostics, notifications and the UI's notices — are written in the code beside whatever raises them, in the same vocabulary: the table's words for the concepts it names, and plain words for the rest.
 Don't invent labels, and don't leak spec or code vocabulary into the interface — the spec's Glossary is the list of words a user should never see, and a diagnostic surfaces its `message`, never its `code`.
 
 The mode identifier is `"tablature"`, not `"tab"`, in types, plugin data and `clientStorage` keys.
@@ -185,9 +187,7 @@ Expect the formatter to rewrite what you just wrote; read a file back after form
 What consistency with the spec means depends on which part of it you touched:
 
 - **Rules, decisions and rationale** stay in the spec, and a change in behavior updates them.
-- **Facts marked *illustrative after Mx*** — formulas, pixel figures, type definitions, data tables — are **deleted** when `Mx` lands, and the module named in the marker becomes authoritative.
-  Don't update a marked table to match new code: delete it and let the tests carry the numbers.
-- Before its milestone lands, a marked block is still live, and a change that affects it updates it as usual.
+- **Exact figures** — pixel values, node counts, data tables, individual test cases — belong in code and tests, not in the spec.
+  Don't add one to the spec to match new code; where the spec states one that has gone stale, generalize it or delete it.
 
-Which blocks belong to which milestone is in [TODO.md](TODO.md), whose "Done means" is the full checklist.
-From M1 onward `docs/spec.md` should get shorter in every implementation commit; if it grew, check whether you added a fact that belongs in code instead.
+The spec shouldn't grow along with the code; if it did, check whether you added a fact that belongs in code instead.

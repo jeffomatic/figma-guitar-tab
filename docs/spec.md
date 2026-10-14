@@ -16,15 +16,11 @@ Any other count is rejected rather than rendered, which keeps two useful invaria
 
 Sections after the two modes — [persistence](#persistence-and-re-edit), [text and measurement](#text-fonts-and-measurement), [the message protocol](#ui-and-sandbox-protocol), [validation](#error-handling-and-validation) and [non-goals](#non-goals) — apply to both.
 
-### Illustrative and normative
+### Spec and tests
 
-Rules, decisions and the reasoning behind them are normative, and stay in this document.
-
-Sections marked ***Illustrative after Mx*** hold **facts** — formulas, pixel figures, type definitions, tables of data — that move into code and tests at the named milestone in [../TODO.md](../TODO.md).
-Once that milestone lands, the named module is authoritative, this document's copy is no longer maintained, and the marked content should be deleted, leaving the surrounding rationale.
-Until then the figures here are correct and worth checking against.
-
-Nothing marked illustrative should be copied into a bug report or treated as a contract; read the code instead.
+This document holds the rules, the decisions and the reasoning behind them, and stays general on purpose.
+Exact figures — pixel positions, node counts, defaults and ranges — live in the code and its tests, and the tests are what fail when a figure is wrong.
+Where this document gives a figure, it is there to explain a rule; read the code for the value.
 
 ## Glossary
 
@@ -33,20 +29,20 @@ Note in particular that *string* and *fret* are distinct: a number appearing in 
 
 | Term | Meaning |
 | --- | --- |
-| **string** | One of the guitar's strings. Identified by its **string index**: line 1 of a group of ASCII lines is the highest-pitched string, and the last line is the lowest-pitched. Rendered as a horizontal line node in both modes. |
+| **string** | One of the guitar's strings. Identified by its **string index**: line 1 of a group of ASCII lines is the highest-pitched string, and the last line is the lowest-pitched. Rendered as a horizontal line in both modes. |
 | **fret number** | A position along a string, counted from the nut. `0` means the open string. This is what the numbers in ASCII source denote. |
 | **note cell** | The text occupying one slot on one string: a run of ASCII characters denoting what is played there — a bare fret number (`4`), one decorated with technique notation (`4/6`, `2h3p2`), or an `x` for a muted note. A cell may encode more than one note. Its rendering is a single text node. |
 | **slot** | One position along a tablature row's horizontal axis, and the unit of horizontal spacing. A slot is either the note cells sounding together — at most one per string, decided by start column rather than by ordinal position — or a *measure break*, which has no cells and no width. Slots are ordered left to right. |
 | **measure break** | A boundary between measures, written as a column of `|` characters spanning every string, and rendered as a vertical line joining the top and bottom string lines. Every row is bracketed by one whether or not the source writes it. |
 | **slot advance** | The horizontal distance from one slot's left edge to the next slot's left edge. Borrowed from typography, where a glyph's advance is the distance from its origin to the next glyph's. It is not constant: a slot advances by its widest cell's width plus `noteGap`, so a slot holding a wide cell pushes the next one further out. |
 | **row** | A horizontal band of tablature containing one set of string lines. A tab too long to fit one line of ASCII is split across several rows. |
-| **row frame** | The Figma frame holding one row's line nodes and text nodes. |
+| **row frame** | The Figma frame holding one row's string labels, string lines, measure breaks and note text. |
 | **row group** | The block of source lines that produces one row: the lines between two blank lines, one line per string. *Row* is the rendered band, *row group* its source. |
 | **playable region** | What remains of a tablature source line after its string label and any leading whitespace are stripped. It begins with an opening measure break if the line writes one, and otherwise with a `-`. Column indices are measured from its first character, so prefixes of differing widths don't skew alignment. |
 | **parent frame** | The Figma frame containing all row frames (tablature) or the whole diagram (fretboard). Carries the plugin data. |
 | **hyphenspace** | Runs of `-` characters separating note cells in tablature source. Their length does not affect rendered geometry. |
 | **string label** | The text naming a string's tuning (`e`, `B`, `G`, ...), rendered as a text node to the left of the diagram. Always rendered: taken from the source line when it supplies one, otherwise from the default tuning for that string count. |
-| **fret boundary** | In a fretboard diagram, a vertical line node marking the division between two frets. |
+| **fret boundary** | In a fretboard diagram, a vertical line marking the division between two frets. |
 | **fret gap** | In a fretboard diagram, the horizontal space between two adjacent fret boundaries — the region in which a dot may be drawn. |
 
 ## Naming and UI copy
@@ -89,7 +85,7 @@ Unqualified "tab" is avoided except in the established phrase *ASCII tab*, which
 This allows you to render traditional guitar tab, where the horizontal axis is time, and the vertical axis is guitar string, with highest on top and lowest on bottom.
 Frets are indicated by numbers.
 
-The plugin will convert user-provided ASCII tab into a nicely-formatted set of line nodes and text nodes, with the string lines knocked out behind the text so that they don't make it hard to read (see [Tablature render model](#tablature-render-model)).
+The plugin will convert user-provided ASCII tab into a nicely-formatted set of lines and text, with the string lines broken around the text so that they don't make it hard to read (see [Tablature render model](#tablature-render-model)).
 For now, the plugin will only support string lines and note cells, meaning we will not attempt to render fancy notation like slides and hammer-ons: the technique characters inside a cell are rendered as literal text, not as graphics.
 
 ### Parsing
@@ -118,7 +114,7 @@ Column indices in step 4 are measured from the first character of the playable r
 The opening measure break is inside that region rather than part of the prefix, so a line that writes one and a line that doesn't have origins one column apart — which is why a measure break must appear on every string or none, and why an inconsistent one is caught as a misalignment rather than silently shifting a row's columns.
 
 **Step 3 — tokenize.** Within a playable region, a *note cell* is a maximal run of characters that are none of: `-`, whitespace, `|`.
-Hyphens and spaces carry no meaning beyond separating cells, which is why hyphenspace collapses (TC-2).
+Hyphens and spaces carry no meaning beyond separating cells, which is why hyphenspace collapses.
 A `|` is a measure break, not a separator, and carries the two rules below.
 Each cell MUST contain at least one digit or at least one `x`/`X`; a cell that contains neither is a validation error.
 A digit makes it a fret, and an `x` makes it a muted or dead note — the standard ASCII notation for a string struck without being fretted, which real-world tab uses freely (`-x-x-x-`, a muted strum on every string).
@@ -139,7 +135,7 @@ A note slot represents one moment in time: every cell in it is played simultaneo
 A break slot holds no cells and has no width; it exists to take up a position, so that the spacing rules give it a gap on each side.
 
 Cells that are meant to sound together are therefore written flush, and a cell may not straddle the boundary between two slots: a cell whose span overlaps a cell in a *different* slot is an `overlapping-cells` error.
-Cells sharing a start column may overlap freely, since they are one slot already — `10` and `5` beginning at the same column is TC-7's first slot.
+Cells sharing a start column may overlap freely, since they are one slot already — `10` and `5` beginning at the same column are simply one slot.
 
 The prohibition is what the alignment rule costs, and it is worth seeing the input it rejects:
 
@@ -158,22 +154,22 @@ Overlap would have to be transitive to define slots at all, and its transitive c
 Consequences worth stating explicitly, since they are the cases that break naive implementations:
 
 - Slot identity is decided by **start column, not by ordinal position** within a string.
-  A string that is silent for one chord does not shift its later cells into the wrong slot (TC-5).
-- A multi-character cell occupies its full column span, so a cell on another string either shares its start column or begins after that span ends — in which case it lands in a **later** slot (TC-3).
-- Absolute column values never reach the renderer — only slot ordering — so hyphen runs of any length produce identical geometry (TC-2).
+  A string that is silent for one chord does not shift its later cells into the wrong slot.
+- A multi-character cell occupies its full column span, so a cell on another string either shares its start column or begins after that span ends — in which case it lands in a **later** slot.
+- Absolute column values never reach the renderer — only slot ordering — so hyphen runs of any length produce identical geometry.
 
 **Step 5 — emit structure.** The parse result is an ordered list of row groups; each row group holds the string labels the source supplied, if any, and its ordered list of slots, note slots and break slots interleaved; each note slot holds at most one cell per string index.
 Filling in default-tuning labels for the strings the source didn't name is a layout concern, not a parsing one, so the parse result records only what was written.
 
 Rendering maps this structure to a parent frame containing one *row frame* per row group.
-Each row frame contains one string line node per source line, at even vertical spacing, and one text node per note cell, left-aligned at its slot's left edge and vertically centered on its string's line.
+Each row frame contains one string line per source line, at even vertical spacing and broken around the cells on it, and one text node per note cell, left-aligned at its slot's left edge and vertically centered on its string's line.
 Slot widths are not uniform — a slot is as wide as its widest cell needs — so slot positions accumulate left to right rather than being a multiple of a fixed pitch.
 Node geometry and defaults are specified in the [tablature render model](#tablature-render-model).
 
 ### String labels
 
 Every diagram renders a string label per string.
-The source may supply them, and when it doesn't they come from the default tuning for the string count, so a label column is always present (TC-4).
+The source may supply them, and when it doesn't they come from the default tuning for the string count, so a label column is always present.
 
 These rules are shared with the fretboard diagram, which has its own label syntax (see [Fretboard string labels](#fretboard-string-labels)):
 
@@ -189,7 +185,7 @@ A source with any other string count is rejected, so every rendered diagram has 
 
 The `label` part of the line grammar in [step 2](#parsing) is the label.
 A prefix of whitespace alone carries no label.
-A leading `|` is an opening measure break, which every row gets regardless, so writing one changes nothing about the result (TC-6).
+A leading `|` is an opening measure break, which every row gets regardless, so writing one changes nothing about the result.
 
 Pipes inside the playable region are measure breaks; see [step 3](#parsing).
 
@@ -201,17 +197,17 @@ Text measurement, fonts and vertical centering are specified once for both modes
 
 #### Node tree
 
-The tree is built by the renderer in `src/plugin/render.ts`: a parent frame carrying the plugin data, holding one row frame per row group, each holding that row's string labels, string line segments, measure breaks and note-cell text.
+The renderer builds a parent frame, which also carries the plugin data, holding one row frame per row group, each holding that row's string labels, string line segments, measure breaks and note-cell text.
 
 - The parent frame uses vertical auto-layout with `itemSpacing` = **rowGap**, no padding, and no fill.
   Row frames are absolutely positioned internally (text overlaps the string lines' band), have no fill, and are resized to their computed extent.
 - Every frame sets `clipsContent = true`, which is also Figma's default.
   A frame's bounds therefore have to contain its ink, which is what `padY` is for.
-- Every index in a layer name is **0-based**, matching the formulas: `Row 0` is the first row, `String 0` the highest-pitched string, `Slot 2 String 1` the cell on the second string in the third slot.
+- Every index in a layer name is **0-based**, matching the formulas: `Row 0` is the first row, `String 0` the highest-pitched string, `Slot 2 String 1` the cell on the second string in the third note slot — measure breaks are not counted, so the number reads the way a player counts notes.
   Numbers that are not indices keep their real values — a fretboard's `Fret Label 7` is fret 7, not the eighth fret drawn.
 - Layer names are for legibility and debugging, not identity: a re-render rebuilds the row frames wholesale rather than diffing them.
   Persistence and re-edit are specified in [Persistence and re-edit](#persistence-and-re-edit).
-- A newly generated parent frame is **centered on the default location** and left selected: the document position of the center of the current viewport when that is available, and the origin otherwise.
+- A newly generated parent frame is **centered on the default location** and left selected: the center of the current viewport, falling back to the origin.
   Centered, not cornered — a frame whose top-left sat at the center of the view would appear in its lower-right quadrant and usually overflow it.
   It is appended to the current page, never into whatever node happens to be selected, so placement doesn't depend on the selection.
 
@@ -230,7 +226,7 @@ Each slot's left edge accumulates from the previous slot's: a slot advances by i
 A break therefore sits one full gap from whatever precedes it and one full gap from whatever follows, which is what makes a row of measures read evenly.
 
 The row is **bracketed by measure breaks**: the opening one sits at `L`, where the string lines begin, and the closing one a full gap past the last slot, where they end.
-Those two replace what used to be a half-gap lead-in and tail-out, and they are drawn whether or not the source wrote them.
+They are drawn whether or not the source wrote them.
 
 The row's width is the closing break's position plus **a whole stroke weight**.
 Half of one is what the break's ink actually occupies, and it is not enough: it puts the ink's outer edge exactly on the bounds of a frame that clips, where it is cut. A whole weight leaves the ink strictly inside, which is the same slack `padY` leaves vertically with `clearance`. The left edge needs no allowance, since `L` is always wider than the heaviest stroke.
@@ -248,16 +244,15 @@ The fretboard diagram pads vertically the same way, with the same `clearance`, o
 Row groups whose labels differ in width therefore start their string lines at different `x`, and the rows do not align with each other.
 That is deliberate: the rendering respects what the ASCII says, rather than imposing a column width the source didn't ask for.
 
-Two properties of this model are worth stating, because the obvious simpler formula (`x = n × noteGap`) breaks on the test cases below:
+Two properties of this model are worth stating, because the obvious simpler formula (`x = n × noteGap`) gets both wrong:
 
 - **Slots widen to fit their contents, and the gap stays constant.** The advance is the widest cell's width *plus* `noteGap`, so the whitespace between a cell and the next slot is exactly `noteGap` however wide the cells are.
-  A cell like `2h3p2` is five characters and pushes its slot out by all of them; without that, a long cell overlaps its neighbor's text and its gap swallows the string line under the next slot (TC-3, TC-7).
+  A cell like `2h3p2` is five characters and pushes its slot out by all of them; without that, a long cell overlaps its neighbor's text and its gap swallows the string line under the next slot.
 
-  This replaced an earlier rule, `max(noteGap, cellWidth + minimumGap)`, which treated the setting as a *minimum advance*.
-  That version applied two rules at once — narrow slots were governed by the pitch, wide ones by the separate minimum — so the whitespace *shrank* as cells grew wider, and a wide cell ended up nearly touching the next slot.
-  One rule, one gap: the uniformity is what makes a row read as evenly spaced, and it is asserted directly rather than inferred from the per-case figures.
+  Treating the setting as a *minimum advance* instead, as in `max(noteGap, cellWidth + minimumGap)`, applies two rules at once, so the whitespace shrinks as cells grow wider and a wide cell nearly touches the next slot.
+  One rule, one gap: the uniformity is what makes a row read as evenly spaced.
 - **Cells are left-aligned, not centered.** Every cell in a slot starts at the same left edge, which is what the ASCII source shows: all cells of one chord begin in the same character column.
-  Centering would stagger them whenever a slot mixes widths — a `10` and a `5` on different strings would no longer line up (TC-7).
+  Centering would stagger them whenever a slot mixes widths — a `10` and a `5` on different strings would no longer line up.
   Text nodes therefore use left horizontal alignment and are positioned by their left edge, never by a center point.
 
 #### String lines and gaps
@@ -288,18 +283,16 @@ A string's segments are the complement of its gaps within the span from the open
 Segments are named `String i Segment k`, with `k` counted 0-based from the left within each string, and a string that is one segment is still `String i Segment 0`.
 
 Z-order within a row frame is string labels, then string segments, then measure breaks, then cell text.
-Nothing overlaps a string line any more, so the order hides nothing; it is fixed so that the layer list reads the same way in every render.
-Three properties follow, all asserted in TC-8:
+Nothing overlaps a string line, so the order hides nothing; it is fixed so that the layer list reads the same way in every render.
+Three properties follow:
 
 - **A string not played during a slot runs straight through it**, because a cell that doesn't exist cuts no gap — even where a long cell on another string has made that slot wide.
 - **A cell narrower than its slot cuts only its own width**, since the gap is sized from the cell's text rather than from the widest cell in the slot.
 - **Consecutive gaps on one string are separated by `noteGap − 2 × clearance` of line.**
-  That is 12 px at the defaults, and zero only at `noteGap`'s minimum, where the merge rule above turns two gaps into one rather than leaving an empty segment.
+  That is zero only at `noteGap`'s minimum, where the merge rule above turns two gaps into one rather than leaving an empty segment.
 
-This replaced an earlier model in which each string was one unbroken line and an opaque rectangle, filled with `knockoutFill`, hid the line behind each cell.
-That model needed no interval arithmetic, but it assumed a white background, and showed as white bars on Figma's grey canvas or on any frame or artwork that wasn't white.
-Segments need no fill, so the background problem disappears rather than being themed around.
-The gap's horizontal extent is exactly the span the knockout covered, so the visual spacing between a cell and its string line is unchanged.
+Cutting the line, rather than hiding it behind an opaque rectangle under each cell, is what keeps the diagram independent of its background.
+A filled knockout would assume a white background, and show as white bars on Figma's grey canvas or on any frame or artwork that isn't white.
 
 ### Tablature render settings
 
@@ -309,164 +302,12 @@ Five are user-configurable: `noteGap`, the whitespace between a note cell and th
 `noteGap`'s minimum is what keeps two cells from ever touching, so no separate minimum-gap constant is needed.
 Their defaults and ranges are in `src/core/settings.ts`, which is also where the UI reads the `min`, `max` and `step` for its inputs.
 
-Everything else is fixed for v1 and lives in the same module: `clearance`, the space between a note cell's text and the string line on either side of it; `stringLabelGap`; `inkColor`; `fontFamily`, `Roboto Mono` falling back to `Roboto`; and `defaultTunings`.
+Everything else is fixed for v1 and lives in the same module: `clearance`, the space between a note cell's text and the string line on either side of it; `stringLabelGap`; `inkColor`; `fontFamily`, whose fallback is described in [Fonts and text nodes](#fonts-and-text-nodes); and `defaultTunings`.
 
-### Tablature test cases
+### Tablature tests
 
-These nine sources are **normative inputs**: the tests use them by name, and `src/core/tablature/fixtures.ts` is extracted from the fenced blocks below verbatim.
-Add a case here and a fixture follows.
-
-What each case *asserts* — slot structures, pixel positions, node counts — lives in `src/core/tablature/parse.test.ts` and `layout.test.ts`.
-Those numbers were deleted from this document when M2 landed, deliberately: a figure maintained in two places drifts, and the tests are the copy that fails when it is wrong.
-
-**TC-1 — multiple rows.** Renders as two row frames under one parent frame, with `rowGap` between them.
-Both rows hold the same slots, so their geometry must come out identical — which is what proves row coordinates are row-local and that `rowGap` never leaks into one.
-The labels are defaulted, and each string's five cells cut its line into six segments, with no two gaps touching.
-
-```
--1-2-3-4-5-
--1-2-3-4-5-
--1-2-3-4-5-
--1-2-3-4-5-
--1-2-3-4-5-
--1-2-3-4-5-
-
--1-2-3-4-5-
--1-2-3-4-5-
--1-2-3-4-5-
--1-2-3-4-5-
--1-2-3-4-5-
--1-2-3-4-5-
-```
-
-**TC-2 — hyphenspace collapses.** These two row groups MUST parse to identical slot structures, and therefore render with identical geometry.
-
-```
--2--0---0-
--2--1---0-
--0--0---0-
--0--2---2-
--2--3---2-
--3--3---0-
-
--2-0-0-
--2-1-0-
--0-0-0-
--0-2-2-
--2-3-2-
--3-3-0-
-```
-
-**TC-3 — long note cells.** A hammer-on-pull-off on the 2nd string, played simultaneously with a single note on the 1st string, followed by a chord of open strings.
-`2h3p2` is five characters wide, so its slot advances by all of that plus `noteGap`.
-The case exists to pin that the following zeroes start a full gap clear of that text, not merely one pitch along.
-
-```
--3-----0-
--2h3p2-0-
----------
----------
----------
----------
-```
-
-**TC-4 — source-supplied labels.** The labels come from the source rather than from standard tuning, read literally so alternate tunings pass through unchanged.
-A source label overrides the default for its position.
-
-```
-e -----
-B -----
-G -1---
-D -2---
-A -2---
-E -----
-```
-
-**TC-5 — sparse strings.** The `2` on the 4th string belongs to the second slot, not the first: ordinal alignment within a string would wrongly make it simultaneous with the first chord.
-It is also alone in its slot, so only one string has a gap there.
-
-```
--0---0-
--------
--------
----2---
--------
--3---3-
-```
-
-**TC-6 — superfluous prefix characters.** Parses identically to TC-4: the pipes are stripped and the labels are still recognized.
-
-```
-e |-----
-B |-----
-G |-1---
-D |-2---
-A |-2---
-E |-----
-```
-
-**TC-7 — mixed cell widths and slot widening.** The case that defeats `x = n × noteGap`.
-
-```
--10-12b14----7-
--5-----------0-
----------------
----------------
----------------
--3-------------
-```
-
-Its first slot mixes a two-character cell with two one-character cells, and all three share one left edge.
-Its second slot holds a five-character cell, so it advances by that width plus `noteGap`, and the third slot starts a full gap clear of it — the same gap the first slot gets, which is the point.
-The source supplies no labels, so the label column holds standard tuning — which is why the first slot does not begin at half a pitch from the frame's edge.
-
-**TC-8 — string gaps.** The TC-7 source again, asserting the string segments rather than the slots.
-Its six cells cut six gaps, and the row's scene holds no `rect` items at all.
-The cases this pins down, with strings numbered from 0 at the top:
-
-- Strings 2, 3 and 4 have no cells, so each is a single segment spanning the row.
-- String 1 has no cell in the second slot, so its line runs unbroken across that slot, even though the slot is wide for `12b14` on string 0.
-  Its gaps are in the first and third slots only, which leaves it three segments.
-- String 1's gap in the first slot is narrower than string 0's, because each is sized from its own cell's width (`5` versus `10`).
-- On string 0, the segment between the `12b14` gap and the `7` gap is `noteGap − 2 × clearance` long: the shortest a segment gets at the defaults.
-
-**TC-9 — muted notes.** A muted strum followed by an open G chord.
-No diagnostics: an `x` is as valid a cell as a digit, and is rendered verbatim.
-
-```
--x-3-
--x-3-
--x-0-
--x-0-
--x-2-
--x-3-
-```
-
-Every cell is one character, so every slot advances by the same amount and every gap is the same width — an `x` is measured and laid out exactly like a fret number, with no special case anywhere in parsing or layout.
-
-**TC-10 — measure breaks.** Interior breaks between note slots, with an explicit opening and closing break that the row would have drawn anyway.
-Pins that a break takes a position of its own with a full gap on each side, and that writing the edge breaks changes nothing.
-
-```
-e|-1-|-2-|
-B|---|---|
-G|---|---|
-D|---|---|
-A|---|---|
-E|---|---|
-```
-
-**TC-11 — empty measures.** Two measures with no notes in either, and no edge breaks written.
-A row with no note cells at all is still renderable when it has breaks to draw, which is the case `empty-row-group` must not reject.
-
-```
-----|----
-----|----
-----|----
-----|----
-----|----
-----|----
-```
+`src/core/tablature/parse.test.ts` and `layout.test.ts` are authoritative for exact slot structures, positions and node counts.
+They exercise the rules above with sources of their own, and this document deliberately doesn't list them.
 
 ## Fretboard diagram
 
@@ -547,7 +388,7 @@ No separate "window too wide" check is needed, and large `leadingFrets` or `trai
 
 There is no separate "whole neck" mode, because `leadingFrets` already expresses one: step 2 clamps, so a `leadingFrets` that reaches past fret 1 anchors the window at the nut.
 At the default `leadingFrets` of 1, the nut appears exactly when the shape sits within a fret of it, which is when it carries information — a shape five frets up neither needs the nut nor the empty frets between.
-Fret labels carry absolute fret numbers (TC-F4), so a window that excludes the nut is still unambiguous about position.
+Fret labels carry absolute fret numbers, so a window that excludes the nut is still unambiguous about position.
 
 The worked examples — an open chord, a shape high on the neck, and the clamps at both ends — are in `src/core/fretboard/layout.test.ts`, which is authoritative for the window.
 
@@ -597,7 +438,7 @@ String labels are right-aligned to `x = L − stringLabelGap` and centered on th
   Each stroke is as long as it can be while its ink, square ends included, stays inside the disc.
 - `dotDiameter` MUST exceed `nutStrokeWeight`, or an open disc cannot cover the nut it sits on.
   At the defaults it is 10 against 4.
-- Z-order is boundaries and string lines first, then dots, open discs and muted markers, then fret labels.
+- Z-order is string labels, then boundaries and string lines, then dots, open discs and muted markers, then fret labels.
   An open disc or muted marker drawn before the nut would be hidden by it.
 - The open and muted discs' fill assumes a white background, and they are the last things in either mode that do; see [Non-goals](#non-goals).
 
@@ -615,7 +456,7 @@ A 2
 E 3
 ```
 
-Each label renders as a text node right-aligned to `x = L − stringLabelGap`, vertically centered on its string (TC-F3).
+Each label renders as a text node right-aligned to `x = L − stringLabelGap`, vertically centered on its string.
 The source above supplies all six; a source supplying none renders `e B G D A E` in the same places.
 
 ### Fretboard render settings
@@ -628,57 +469,10 @@ Their defaults and ranges are in `src/core/settings.ts`, which is also where the
 
 Everything else is fixed for v1 and lives in the same module: `clearance`; `minFrets`, the narrowest window; `maxFret`, the highest fret a source may name and the highest the window may reach; `nutStrokeWeight`; `dotDiameter`; `fretLabelGap`; `stringLabelGap`; `defaultTunings`; `knockoutFill`, the open and muted discs' fill; `inkColor`; and `fontFamily`, shared with tablature.
 
-### Fretboard test cases
+### Fretboard tests
 
-These sources are **normative inputs**: the tests use them by name, and `src/core/fretboard/fixtures.ts` is extracted from the fenced blocks in this section and in [ASCII input](#ascii-input) and [Fretboard string labels](#fretboard-string-labels) verbatim.
-
-What each case *asserts* — markers, windows, pixel positions, node counts — lives in `src/core/fretboard/parse.test.ts` and `layout.test.ts`, and those numbers were deleted from this document when M6 landed.
-
-**TC-F1 — scale shape.** The G-major scale source in [ASCII input](#ascii-input) at the default settings: a window that reaches the nut because the shape sits within a fret of it, one dot per fretted note, no open markers, and string labels defaulted.
-
-**TC-F2 — open chord.** The G-major chord source in [ASCII input](#ascii-input) at the default settings: dots for the fretted strings, open-string discs superimposed on the nut, and default string labels to the left of the board.
-
-**TC-F3 — source-supplied fretboard labels.** The labeled source in [Fretboard string labels](#fretboard-string-labels): TC-F2's chord, with label text nodes taken from the source rather than defaulted, and every boundary, string, dot and open marker offset right by `L`.
-The open-string discs are centered at `x = L`, on the nut, and each carries both a `knockoutFill` fill and an `inkColor` stroke — without the fill the nut line would run through the disc, and without the stroke it would be invisible.
-
-**TC-F4 — shifted window, no nut.** A B major scale in 6th position: the G major box of TC-F1 transposed up four semitones, so its lowest root moves from the 3rd fret of the low E string to the 7th.
-Rendered at the default `leadingFrets` and `trailingFrets` of 1.
-
-```
-6 7
-7 9
-6 8 9
-6 8 9
-6 7 9
-7 9
-```
-
-Because the window starts at fret 5, **no nut is drawn**: boundary 0 is an ordinary `Fret Boundary 0` at `strokeWeight`, not a `Nut` at `nutStrokeWeight`.
-The source has no `0`, so the rule forcing `lo` to 1 does not fire.
-
-The nut's absence is not a setting here — it falls out of the shape sitting five frets above it.
-To pull the nut into view anyway, a `leadingFrets` of 5 or more would reach it, since the lowest source fret is 6.
-
-The case asserts the full geometry at the default settings, and in particular:
-
-- Fret labels show **absolute fret numbers**, not positions within the window — a shifted window is the only case where those differ, and getting it wrong makes every high-position diagram silently mislabeled.
-- The leading and trailing buffer frets contain no dots.
-- The low E string's two dots sit on frets 7 and 9, which carry the root and the 9th.
-- Nothing is drawn within `clearance` of the top of the frame or below its bottom: `padY` keeps the first string's ornaments inside the frame.
-
-**TC-F5 — muted strings.** An open D major chord, with the two lowest strings muted.
-
-```
-2
-3
-2
-0
-x
-x
-```
-
-Both muted strings carry an X on a `knockoutFill` disc with no outline, centered at `x = L` like the open disc on the D string.
-The window is TC-F2's: the `0` is what pulls it to the nut, not the `x` markers.
+`src/core/fretboard/parse.test.ts` and `layout.test.ts` are authoritative for exact markers, windows, positions and node counts.
+As for tablature, they use sources of their own, and this document doesn't list them.
 
 ## Text, fonts and measurement
 
@@ -906,8 +700,6 @@ Trailing blank lines are trimmed; a leading blank line is a markerless first str
 That makes a stray leading newline indistinguishable from an intentional markerless top string: a 6-line source with one extra leading newline is a perfectly valid 7-string source, so the string-count check cannot catch it.
 Hence `leading-blank-line` below — it renders either way, but says what it assumed.
 
-| Code | Condition | Severity | Behavior |
-| --- | --- | --- | --- |
 `src/core/fretboard/parse.ts` and its tests are authoritative for the codes and their anchors; what follows is why each condition is handled as it is.
 
 - A token other than a leading string label that is not `0` or a positive integer is an error at that token. Guessing at `3.5` or `3x` would draw a dot the user didn't write.

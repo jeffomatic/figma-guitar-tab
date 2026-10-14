@@ -102,7 +102,7 @@ describe("tablature structure", () => {
     expect(characters(at(slots, 1))).toEqual(["3", "3", "0", "0", "2", "3"]);
   });
 
-  it("every spec test case is diagnostic-free", () => {
+  it("every fixture is diagnostic-free", () => {
     for (const [name, source] of Object.entries({ TC1, TC2, TC3, TC4, TC5, TC6, TC7, TC9 })) {
       expect(codes(parseTablature(source)), name).toEqual([]);
     }

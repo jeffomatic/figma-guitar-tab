@@ -24,11 +24,10 @@ The string count comes from the number of lines in the source, and any other cou
 | [docs/examples.md](docs/examples.md) | Example sources for both modes, to paste into the plugin. |
 | [docs/spec.md](docs/spec.md) | Normative product specification. The source of truth for behavior. |
 | [AGENTS.md](AGENTS.md) | Engineering conventions for anyone (human or agent) writing code here. |
-| [TODO.md](TODO.md) | Implementation plan and milestone status. |
 
 ## Getting started
 
-Requires Node 20.19+, [pnpm](https://pnpm.io), and the Figma **desktop** app — development plugins cannot be loaded in the browser.
+Requires Node 22.12+, [pnpm](https://pnpm.io), and the Figma **desktop** app — development plugins cannot be loaded in the browser.
 
 ```sh
 pnpm install
@@ -56,7 +55,7 @@ The same extension also surfaces oxlint's diagnostics inline.
 `pnpm check` fails on an unformatted file, so nothing unformatted gets far.
 
 Only TypeScript and JavaScript are formatted.
-Markdown, JSON, CSS and HTML are excluded in `.oxfmtrc.json` — prose here uses semantic line breaks, `docs/spec.md`'s ASCII examples are extracted verbatim into test fixtures, and the UI's HTML and CSS carry build markers and Tailwind directives.
+Markdown, JSON, YAML, CSS and HTML are excluded in `.oxfmtrc.json` — prose here uses semantic line breaks, reflowing an ASCII example would change what it means, and the UI's HTML and CSS carry build markers and Tailwind directives.
 Don't widen that list without reading the note in [AGENTS.md](AGENTS.md).
 
 ## Commands
@@ -67,22 +66,22 @@ Don't widen that list without reading the note in [AGENTS.md](AGENTS.md).
 | `pnpm dev` | Same build, in watch mode |
 | `pnpm format` | oxfmt, writing in place |
 | `pnpm format:check` | oxfmt, reporting instead of writing |
-| `pnpm typecheck` | `tsc --noEmit` |
+| `pnpm typecheck` | `tsc` for each of `src/core`, `src/plugin` and `src/ui` |
 | `pnpm lint` | oxlint, type-aware rules |
 | `pnpm test` | Vitest, run once |
-| `pnpm check` | typecheck + lint + test. The gate for any change. |
+| `pnpm check` | format check + typecheck + lint + test. The gate for any change. |
 
 ## Layout
 
 ```
 manifest.json          Figma plugin manifest
 scripts/build.mjs      esbuild build: bundles both halves, compiles Tailwind, inlines the UI
-src/core/              Pure TypeScript. Parsing, layout, settings, protocol types. No Figma, no React.
+src/core/              Pure TypeScript: parsing, layout, measurement, settings, diagnostics, plugin data, protocol types. No Figma, no React.
 src/plugin/            The Figma sandbox half. Turns core's layout output into real nodes.
 src/ui/                The React + Tailwind iframe.
 docs/spec.md           Normative spec
+docs/examples.md       Example sources for both modes
 AGENTS.md              Engineering conventions
-TODO.md                Milestones and status
 .oxfmtrc.json          Formatting options, and the file types deliberately left unformatted
 .vscode/               Checked-in editor settings: format-on-save, and the Oxc extension recommendation
 tsconfig.base.json     Shared compiler options; each area has its own tsconfig.json beside its code

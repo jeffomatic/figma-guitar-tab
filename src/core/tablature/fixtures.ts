@@ -1,17 +1,13 @@
-// The test-case sources from the spec's Tablature test cases section.
+// Sources for the tablature tests.
 //
-// Extracted from docs/spec.md verbatim rather than retyped: these sources are
-// whitespace-significant, and a mistyped hyphen changes a slot structure
-// silently.
+// The tests own these: the spec states rules and doesn't name or copy
+// individual cases. They are whitespace-significant, so a mistyped hyphen
+// changes a slot structure silently -- keep them exact.
 //
-// Sources live here; expectations live in the test that cares about them. The
-// spec marks its test-case section *illustrative after M1 and M2* because every
-// case asserts two separate things -- a parse result and a geometry -- so these
-// strings are imported by parse.test.ts and, from M2, by layout.test.ts.
-//
-// Each comment below carries the spec's own name for the case, plus pairings and
-// reuse. Nothing derived: a comment restating what a test asserts would go stale
-// the moment that assertion changed, and nothing would catch it.
+// Expectations live in the test that cares about them. Each comment below
+// carries the case's name, plus pairings and reuse. Nothing derived: a comment
+// restating what a test asserts would go stale the moment that assertion
+// changed, and nothing would catch it.
 //
 // TC-8 has no source of its own: it re-asserts TC-7's, as string segments.
 

@@ -1,13 +1,9 @@
-// The test-case sources from the spec's Fretboard diagram section.
+// Sources for the fretboard tests.
 //
-// Extracted from docs/spec.md verbatim rather than retyped, as for tablature.
+// As for tablature, the tests own these and the spec doesn't copy them.
 // Fretboard sources are only whitespace-delimited, so a mistyped space is less
 // dangerous than a mistyped hyphen -- but a dropped token silently changes the
-// shape, and the copies must stay byte-identical either way.
-//
-// TC-F1 and TC-F2 use the two examples in the spec's ASCII input section, and
-// TC-F3 the example in Fretboard string labels; TC-F4 and TC-F5 have their own
-// blocks.
+// shape.
 
 /**
  * Strip the newline after the opening backtick and the one before the closing
